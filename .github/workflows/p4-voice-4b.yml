@@ -39,10 +39,17 @@ jobs:
         run: |
           set -euo pipefail
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
-             -Icomponents/s3_gateway_policy \
+             -Icomponents/s3_gateway_policy -Icomponents/s3_gateway_session \
+             components/s3_gateway_session/s3_gateway_session.c \
              components/s3_gateway_policy/s3_gateway_policy.c \
              tests/p4/test_gateway_policy.c -o /tmp/p4_gateway_policy
           /tmp/p4_gateway_policy
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+             -Icomponents/s3_gateway_policy -Icomponents/s3_gateway_session \
+             components/s3_gateway_session/s3_gateway_session.c \
+             components/s3_gateway_policy/s3_gateway_policy.c \
+             tests/p4/test_device_session_gate.c -o /tmp/p4_device_gate
+          /tmp/p4_device_gate
           ! grep -R 'esp_wifi_init\|esp_wifi_set_mode\|nvs_flash_erase' components/s3_gateway_policy
           ! grep -R 'SOCK_DGRAM\|socket(' components/s3_gateway_policy
 

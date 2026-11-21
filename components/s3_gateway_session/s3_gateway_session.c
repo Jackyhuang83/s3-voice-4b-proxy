@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 #include "s3_gateway_session.h"
 
+/* The real AP gate is born locked; only the supervised runtime may arm it. */
+static s3_gateway_session_t device_session;
+s3_gateway_session_t *s3_gateway_session_device(void)
+{
+    return &device_session;
+}
+
 #define S3_SESSION_EPOCH_SHIFT 8u
 #define S3_SESSION_EPOCH_LIMIT 0x00ffffffu
 #define S3_SESSION_KEEP_ON_REVOKE (S3_SESSION_STA | S3_SESSION_AP)

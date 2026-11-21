@@ -3,6 +3,7 @@
  * State changes are atomic; no Wi-Fi, netif, secrets, timers or side effects.
  */
 #include "s3_gateway_policy.h"
+#include "s3_gateway_session.h"
 
 static s3_gateway_policy_t device_policy = S3_GATEWAY_POLICY_INIT;
 s3_gateway_policy_t *s3_gateway_policy_device(void) { return &device_policy; }
@@ -85,7 +86,17 @@ void s3_gateway_policy_event(s3_gateway_policy_t *policy, s3_gateway_event_t eve
 bool s3_gateway_policy_ready(const s3_gateway_policy_t *policy) {
     if (!policy) return false;
     uint32_t flags = __atomic_load_n(&policy->flags, __ATOMIC_ACQUIRE);
-    return (flags & (S3_F_ALLOW | S3_F_CONFIG)) == S3_F_ALLOW;
+    if ((flags & (S3_F_ALLOW | S3_F_CONFIG)) != S3_F_ALLOW)
+        return false;
+    /* Only real device policy needs the epoch gate. Independent host policy
+     * fixtures retain their legacy behavior; none authorizes AP forwarding.
+     * A revoked or uninitialized device session can never be overridden by
+     * stale P4-1 flags.
+     */
+    if (policy == &device_policy &&
+        !s3_gateway_session_ready(s3_gateway_session_device()))
+        return false;
+    return true;
 }
 
 s3_gateway_packet_action_t s3_gateway_packet_decide(

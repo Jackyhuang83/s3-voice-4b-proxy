@@ -40,6 +40,8 @@ typedef enum {
     S3_SESSION_CONFIG_ENTER
 } s3_gateway_session_event_t;
 
+/* Zero-initialized device session is locked off until supervisor init. */
+s3_gateway_session_t *s3_gateway_session_device(void);
 void s3_gateway_session_init(s3_gateway_session_t *session);
 uint32_t s3_gateway_session_epoch(const s3_gateway_session_t *session);
 uint32_t s3_gateway_session_flags(const s3_gateway_session_t *session);
