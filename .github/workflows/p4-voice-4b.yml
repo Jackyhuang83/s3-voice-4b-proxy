@@ -1,0 +1,188 @@
+name: P4-1 Waveshare 4B Xiaozhi voice-first integration build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Rebuilding the 4B image is expensive; obsolete PR commits cannot be
+# accepted as evidence for the current HEAD. Keep only the latest run.
+concurrency:
+  group: p4-4b-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  voice-4b-and-protocol-abi:
+    name: Pin real 4B voice BSP, build with SS2022/VLESS protocol components
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    container:
+      image: espressif/idf:release-v6.1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check local assembly tool syntax and proxy provenance
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/p4_prepare_voice.py
+          python -m py_compile tools/p4_import_tcp.py
+          python -m py_compile tools/p4_prepare_wifi.py
+          python tools/check_ss2022_vendor.py
+
+      - name: Host C11 negative matrix for 4B fail-closed lifecycle policy
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+             -Icomponents/s3_gateway_policy \
+             components/s3_gateway_policy/s3_gateway_policy.c \
+             tests/p4/test_gateway_policy.c -o /tmp/p4_gateway_policy
+          /tmp/p4_gateway_policy
+          ! grep -R 'esp_wifi_init\|esp_wifi_set_mode\|nvs_flash_erase' components/s3_gateway_policy
+          ! grep -R 'SOCK_DGRAM\|socket(' components/s3_gateway_policy
+
+      - name: Host RFC1035 DNS codec SERVFAIL and deterministic bounds
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            tests/p4/test_dns_codec.c -o /tmp/p4_dns_test
+          /tmp/p4_dns_test
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            tests/p4/test_dns_fuzz.c -o /tmp/p4_dns_fuzz
+          /tmp/p4_dns_fuzz
+
+      - name: Host DNS encrypted-proxy routing negative matrix
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns -Icomponents/s3_ss2022 \
+            -Icomponents/s3_vless_tls -Icomponents/s3_gateway_policy \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            components/s3_gateway_dns/s3_gateway_dns_processor.c \
+            tests/p4/test_dns_processor.c -o /tmp/p4_dns_process
+          /tmp/p4_dns_process
+          ! grep -E '(^|[^_])socket\(|SOCK_DGRAM|sendto\(' \
+            components/s3_gateway_dns/s3_gateway_dns_processor.c
+
+      - name: Host WPA2 AP input-validation guard
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -D_POSIX_C_SOURCE=200809L -Icomponents/s3_gateway_ap \
+            components/s3_gateway_ap/s3_gateway_ap_config.c \
+            tests/p4/test_ap_credentials.c -o /tmp/p4_ap_check
+          /tmp/p4_ap_check
+
+      - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/78/xiaozhi-esp32.git voice
+          git -C voice checkout --detach 831ffd14188553cc887408b75396ae38618538e0
+          test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
+
+      - name: Pin board, audio, display, PMIC and original 16MB partition layout
+        run: |
+          set -euo pipefail
+          python tools/p4_prepare_voice.py --voice voice --project . --inspect-only
+
+      - name: Assemble isolated voice-first source with both proxy C libraries
+        run: |
+          set -euo pipefail
+          python tools/p4_prepare_voice.py --voice voice --project .
+          ! grep -q 'nvs_flash_erase()' voice/main/main.cc
+          grep -q 'refusing automatic erase' voice/main/main.cc
+          grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' voice/sdkconfig.defaults.esp32s3
+          grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
+          grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
+          ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
+
+      - name: Import pinned, patched P1 IPv4 flow core for IDF6 ABI compile
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git router
+          git -C router checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C router rev-parse HEAD)" = dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          for patch in \
+            patches/0001-tcp-only-drop-internet-udp.patch \
+            patches/0002-tcp-only-enforce-no-direct-route.patch \
+            patches/0003-validate-and-fail-closed-ipv4-input.patch \
+            patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C router apply --check "../$patch"
+            git -C router apply "../$patch"
+          done
+          python tools/p4_import_tcp.py --router router --voice voice
+          test -s voice/components/s3_tcp_guard/LICENSE.router
+          grep -q S3_PROXY_TCP_ONLY voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "s_enabled = false;" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "void transparent_tcp_uninstall_ap_output(void)" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "bool transparent_tcp_is_reinjecting(void)" voice/components/s3_tcp_guard/transparent_tcp.c
+
+      - name: Pin the original Xiaozhi Wi-Fi owner and prevent second NVS erase
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/78/esp-wifi-connect.git wifi-source
+          git -C wifi-source checkout --detach 77095063d77e7705f68e95005c43ed73582233ce
+          python tools/p4_prepare_wifi.py --voice voice --wifi-source wifi-source
+          test "$(git -C wifi-source rev-parse HEAD)" = 77095063d77e7705f68e95005c43ed73582233ce
+          ! grep -q 'nvs_flash_erase()' voice/components/78__esp-wifi-connect/wifi_manager.cc
+          grep -q 'refusing automatic erase' voice/components/78__esp-wifi-connect/wifi_manager.cc
+          grep -q 's3_gateway_ap_pre_start' voice/components/78__esp-wifi-connect/wifi_station.cc
+          grep -q 's3_gateway_ap_after_stop' voice/components/78__esp-wifi-connect/wifi_station.cc
+          test "$(grep -Fc 'ESP_ERROR_CHECK(esp_wifi_start());' voice/components/78__esp-wifi-connect/wifi_station.cc)" = 1
+
+      - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
+        working-directory: voice
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          python scripts/build.py waveshare/esp32-s3-touch-lcd-4b \
+            --name esp32-s3-touch-lcd-4b --language zh-CN
+          test -s build/merged-binary.bin
+          grep -q "s3_gateway_policy" build/compile_commands.json
+          grep -q '/components/78__esp-wifi-connect/wifi_manager.cc' build/compile_commands.json
+          grep -q "s3_gateway_ip4.c" build/compile_commands.json
+          grep -q "s3_gateway_ip6.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_udp.c" build/compile_commands.json
+          grep -q "s3_gateway_tcp_server.c" build/compile_commands.json
+          grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
+          grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
+          grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
+          grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
+          grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
+          test -f build/partition_table/partition-table.bin
+          grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
+          grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
+          grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' sdkconfig
+          grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
+          echo "PASS Xiaozhi voice + SS2022/VLESS + P1 patched TCP core, IDF6 ABI compile"
+          echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"
+          echo "NO firmware binary is published as a flashable release."
+
+      - name: Verify voice assets and original partitions were preserved
+        run: |
+          set -euo pipefail
+          git -C voice diff -- sdkconfig.defaults partitions/v2/16m.csv \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc \
+            CMakeLists.txt
+          python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
+          test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc)"
+          test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
+          echo "PASS voice source and recovery-critical flash layout unchanged"
