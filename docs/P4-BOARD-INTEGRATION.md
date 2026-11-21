@@ -260,6 +260,27 @@ An authenticated, secure AP must be configured before driver startup,
 with an explicit user-authorized enable path, relay and teardown.
 Do not interpret source compilation as a working hotspot.
 
+## AP-only DNS UDP listener (source/compile gate)
+
+The ESP-IDF 6.1 gateway DNS component now provides
+`s3_gateway_dns_udp_open` and `s3_gateway_dns_udp_poll`. The listener
+is allowed to bind UDP port 53 **only** on the official
+`WIFI_AP_DEF` IPv4 address, never `INADDR_ANY` or STA. Each datagram
+is bounded to 512 bytes (513-byte receive buffer detects oversized
+input); only sources inside that AP subnet are accepted. Valid queries
+are dispatched through the existing SS2022/VLESS authenticated
+`s3_gateway_dns_process`, which returns SERVFAIL when tunnel or policy
+fails. The sole UDP `sendto` replies to the original AP client;
+**no cleartext upstream DNS socket exists**.
+
+The source deliberately does not create a FreeRTOS task, open a socket
+on startup or use the voice app's Wi-Fi driver; the future
+single-owner APSTA service must provision credentials, start the
+listener, and stop/close it *before* dismantling the AP network
+interface. DNS-over-TCP fallback remains unimplemented. Compilation
+proves API compatibility, **not** real AP DNS transport or no-leak
+packet capture.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
