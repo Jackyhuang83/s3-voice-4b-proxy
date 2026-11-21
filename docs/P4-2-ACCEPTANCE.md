@@ -19,6 +19,11 @@
 - AP stop 先撤销 epoch 和工作任务，再限时等待退出后释放 AP netif。若超时则保留隔离的 AP netif，不再主动触发故障崩溃；需要后续实机与模拟 stop 竞态检查。
 - **本项仅代表 DNS 运行任务基础接线，透明 TCP relay 工作任务、活动 socket 的有界取消、可信节点启停、资源预算和实际 4B 功能仍未验收。**
 
+## G4 核查：ESP-IDF 6.1 AP DNS 与小智 STA DNS 隔离
+- Espressif `components/esp_netif/Kconfig` 中 `ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF` 默认为 `n`；默认 lwIP DNS 服务器是全局值。为了避免 AP 本地 DNS 配置覆盖小智 STA 默认解析，隔离构建明确启用 `CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y`，并验证生成 `sdkconfig` 中仍为 `y`。
+- 这不意味着运行时已验证 DNS 隔离；仍须后续同时观察 AP DHCP option 6 与小智 STA 正常域名解析/音频等行为，检查异常重连和默认 netif 切换。
+- 官方依据：https://docs.espressif.com/projects/esp-idf/en/release-v6.1/esp32s3/api-reference/network/esp_netif_programming.html ，https://github.com/espressif/esp-idf/blob/release/v6.1/components/esp_netif/Kconfig 。
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。

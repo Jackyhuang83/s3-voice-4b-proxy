@@ -132,6 +132,7 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y' voice/sdkconfig.defaults.esp32s3
           grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_SESSION_STA_LOST' voice/main/boards/common/wifi_board.cc
@@ -200,6 +201,7 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
           grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' sdkconfig
+          grep -qx 'CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y' sdkconfig
           grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
           echo "PASS Xiaozhi voice + SS2022/VLESS + P1 patched TCP core, IDF6 ABI compile"
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"

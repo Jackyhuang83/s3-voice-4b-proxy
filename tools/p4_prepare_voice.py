@@ -156,14 +156,16 @@ def prepare(voice: Path, project: Path) -> None:
     for key in ("CONFIG_LWIP_IPV6=y",
                 "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
                 "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
-                "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y"):
+                "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y",
+                "CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y"):
         require(key.split("=")[0] + "=" not in original_cfg,
                 "Upstream already sets " + key.split("=")[0])
     target_cfg.write_text(original_cfg.rstrip() +
         "\n\n# P4-1 isolated 4B outbound IPv6 / official AF_UNSPEC fix\n" +
         "\n".join(("CONFIG_LWIP_IPV6=y", "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
                    "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
-                   "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y")) + "\n")
+                   "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y",
+                   "CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y")) + "\n")
 
     # Wire only the Xiaozhi-owned connection and provisioning lifecycle to
     # a locked-down policy. This does not call esp_wifi_init, create an AP,
