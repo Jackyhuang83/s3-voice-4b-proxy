@@ -10,6 +10,8 @@
 #include "lwip/ip4_addr.h"
 #include "s3_gateway_policy.h"
 #include "transparent_tcp.h"
+/* Pinned to router/include/lwip_router_hook.h; do not import its conflicting Hook macro. */
+int transparent_tcp_ip4_input(struct pbuf *packet, struct netif *input_netif);
 
 static struct netif * volatile bound_ap;
 void s3_gateway_lwip_bind_ap(struct netif *ap) {

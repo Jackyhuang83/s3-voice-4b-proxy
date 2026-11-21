@@ -34,6 +34,9 @@ def main() -> None:
             "Missing original MIT grant")
     c_file = (router / "src/transparent_tcp.c").read_text()
     h_file = (router / "src/transparent_tcp.h").read_text()
+    router_hook = (router / "include/lwip_router_hook.h").read_text()
+    require("int transparent_tcp_ip4_input(struct pbuf *packet, struct netif *input_netif);" in router_hook,
+            "Pinned P1 input hook ABI changed")
 
     # A raw upstream transplant is unsafe: require P1 post-patch guards.
     for expected in ("S3_PROXY_TCP_ONLY", "pbuf_free(packet);",
