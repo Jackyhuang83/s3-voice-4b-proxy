@@ -233,7 +233,7 @@ jobs:
           python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
           test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json)"
           test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
           echo "PASS voice source and recovery-critical flash layout unchanged"
 
