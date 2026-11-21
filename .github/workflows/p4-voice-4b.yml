@@ -43,6 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           python tools/p4_prepare_voice.py --voice voice --project .
+          ! grep -q 'nvs_flash_erase()' voice/main/main.cc
+          grep -q 'refusing automatic erase' voice/main/main.cc
+          grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
 
       - name: Compile 4B Xiaozhi voice and linked SS2022/VLESS libraries
         working-directory: voice
@@ -53,6 +57,9 @@ jobs:
             --name esp32-s3-touch-lcd-4b --language zh-CN
           test -s build/merged-binary.bin
           test -f build/partition_table/partition-table.bin
+          grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
+          grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
+          grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
           echo "PASS source + full ESP32-S3 4B voice build with linked protocol components"
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"
           echo "NO firmware binary is published as a flashable release."
