@@ -33,7 +33,13 @@
 
 ## P3-3 验收与阶段退出
 
-**状态：PENDING CI / PR OPEN。** 本阶段须在同一个 PR 中通过新增双栈故障矩阵、所有历史回归和修改后 **R8N16 全量固件编译**，再 Squash Merge、更新 `docs/PLAN.md` 进度。
+**状态：PASS / MERGED（P3 阶段源码、真实协议服务端和 CI 固件构建验收）**
+
+- [PR #13](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/13) 已于 2026-11-21 Squash Merge 到 `main`；合并 SHA `c7f30f019d72ffd221eb7a1c92a1723a3ae67a8e`。
+- [P3-3 实际 CI Run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44884615557)：官方 shadowsocks-rust IPv4/IPv6 服务端真实 TCP/DNS、错误 PSK、请求重放、超时戳、离线关闭和 AAAA→同节点 A 回退测试 **PASS**。
+- 生产 SS2022 C 端收到加密有效但 DNS ID 不符或 QR=0 的回复时拒绝，缓冲区不修改；VLESS ESP-TLS IPv4/IPv6 证书 CA/SNI/SAN、**有效 CA 签发但已过期的服务端证书**、DNS ID/QR、异常响应测试全部 **PASS**。
+- R8N16 完整 ESP-IDF/PlatformIO 固件编译 **PASS**，保持上游 16 MiB Flash 与双 5 MiB OTA 分区配置不变。**同一 PR Head SHA 的 10 项 GitHub Actions 全部 completed/success**，历史 P0–P3-2 回归亦通过。
+- 按冻结的 PR 权重，P3-1 40% + P3-2 35% + P3-3 25% = **P3 100%**；项目管理加权总体 **85%**。以下 P4 真实设备与生产发布条件仍未达到，绝不作为本阶段已验收依据。
 
 P3=100% 仅表示 P3 的**源码、协议功能、CI 固件编译**验收完成。以下 P4 专属结果仍 **NOT RUN**：
 
