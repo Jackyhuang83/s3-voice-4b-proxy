@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -181,6 +182,7 @@ static void replay_or_stale(int port, bool stale)
 
 int main(int argc, char **argv)
 {
+    signal(SIGPIPE, SIG_IGN); /* Rust may reset invalid replay/stale connections. */
     if (argc != 3) return 2;
     int port = atoi(argv[2]);
     if (port < 1 || port > 65535) return 2;
