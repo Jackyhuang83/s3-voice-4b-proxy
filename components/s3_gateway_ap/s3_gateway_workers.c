@@ -268,6 +268,14 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
     __atomic_store_n(&revoke_requested, 0u, __ATOMIC_RELEASE);
     __atomic_store_n(&authorized, 1u, __ATOMIC_RELEASE);
     transparent_tcp_set_enabled(true);
+    /* An AP/STA loss may race the last ARM instructions. Never return
+     * success or leave the interception gate raised for a revoked epoch.
+     */
+    if (!is_authorized() ||
+        epoch != s3_gateway_session_epoch(s3_gateway_session_device())) {
+        s3_gateway_workers_revoke();
+        goto done;
+    }
     ok = true;
 done:
     if (!ok) {
@@ -322,14 +330,17 @@ bool s3_gateway_workers_drain(uint32_t timeout_ms)
     TickType_t left = pdMS_TO_TICKS(timeout_ms);
     TickType_t step = pdMS_TO_TICKS(S3_GW_STOP_POLL_MS);
     if (!step) step = 1;
-    while (__atomic_load_n(&live_tasks, __ATOMIC_ACQUIRE) && left) {
+    while ((__atomic_load_n(&live_tasks, __ATOMIC_ACQUIRE) ||
+            __atomic_load_n(&configuration_in_progress, __ATOMIC_ACQUIRE))
+           && left) {
         TickType_t n = left < step ? left : step;
         vTaskDelay(n);
         left -= n;
         cancel_clients();
     }
-    if (__atomic_load_n(&live_tasks, __ATOMIC_ACQUIRE))
-        return false;
+    if (__atomic_load_n(&live_tasks, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&configuration_in_progress, __ATOMIC_ACQUIRE))
+        return false; /* Never release AP or credentials during a probe. */
     if (udp_fd >= 0) close(udp_fd);
     if (dns_fd >= 0) close(dns_fd);
     if (relay_fd >= 0) close(relay_fd);
