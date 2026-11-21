@@ -27,10 +27,43 @@ PROTECTED = [
     "main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc",
     PARTITIONS,
 ]
-COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns", "s3_gateway_ap", "s3_gateway_tcp")
+COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns", "s3_gateway_ap", "s3_gateway_tcp", "s3_gateway_session")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
 # Exact permitted root-CMake append, never a partition or main-entry rewrite.
 ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n# The hook symbol lives in a static library ordered before lwIP. Force\n# archive extraction, equivalent to -u on GNU ld; never rely on link order.\ntarget_link_options(xiaozhi.elf PRIVATE \"-Wl,--undefined=s3_gateway_ip4_input\" \"-Wl,--undefined=lwip_hook_ip6_input\")\n"
+
+
+# Narrow P4-2 overlay only: unused IO-expander LONG PRESS.
+# GPIO0 voice key and the short-press boot-partition behavior are untouched.
+BOARD_LONG_PRESS = (
+    '                } else {\n'
+    '                    ESP_LOGI(TAG, "Long press detected (>1000ms), no action");\n'
+    '                }\n'
+)
+BOARD_ARM_GESTURE = (
+    '                } else if (press_duration >= 1100 && press_duration < 1800) {\n'
+    '                    /* Physical-only serial provisioning; no radio UI. */\n'
+    '                    if (!s3_gateway_console_start()) {\n'
+    '                        ESP_LOGW(TAG, "Physical setup console unavailable");\n'
+    '                    }\n'
+    '                } else if (press_duration >= 1800 && press_duration < 3200) {\n'
+    '                    /* Physical explicit arm/disarm, nonblocking key monitor. */\n'
+    '                    if (!s3_gateway_workers_admin_button_toggle()) {\n'
+    '                        ESP_LOGW(TAG, "Gateway AP/node not configured");\n'
+    '                    }\n'
+    '                } else {\n'
+    '                    ESP_LOGI(TAG, "Long press detected, no action");\n'
+    '                }\n'
+)
+
+def expected_board_overlay(original: str) -> str:
+    header = '#include "config.h"\n'
+    require(original.count(header) == 1, "4B board header changed")
+    require(original.count(BOARD_LONG_PRESS) == 1,
+            "4B physical button semantics changed")
+    return (original.replace(header,
+                             header + '#include "s3_gateway_workers.h"\n', 1)
+            .replace(BOARD_LONG_PRESS, BOARD_ARM_GESTURE, 1))
 
 
 def digest(path: Path) -> str:
@@ -116,13 +149,16 @@ def prepare(voice: Path, project: Path) -> None:
     injected = (
         CMAKE_NEEDLE +
         "# P4-1 component dependencies only; no target_* commands in IDF script mode.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy s3_gateway_dns s3_gateway_ap s3_gateway_tcp)\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy s3_gateway_dns s3_gateway_ap s3_gateway_tcp s3_gateway_session)\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}
     require(before == after, "Recovery-critical voice files unexpectedly modified")
     require(all((voice / "components" / name / "CMakeLists.txt").is_file()
                 for name in COMPONENTS), "Proxy components were not copied")
+    # P4-2: the ONE allowed board source change, after invariant checks.
+    key_board = voice / BOARD / "esp32-s3-touch-lcd-4b.cc"
+    key_board.write_text(expected_board_overlay(key_board.read_text()))
 
     # The upstream app currently erases the ENTIRE shared NVS on certain
     # initialization errors. Replace ONLY that destructive recovery branch in
@@ -156,14 +192,16 @@ def prepare(voice: Path, project: Path) -> None:
     for key in ("CONFIG_LWIP_IPV6=y",
                 "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
                 "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
-                "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y"):
+                "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y",
+                "CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y"):
         require(key.split("=")[0] + "=" not in original_cfg,
                 "Upstream already sets " + key.split("=")[0])
     target_cfg.write_text(original_cfg.rstrip() +
         "\n\n# P4-1 isolated 4B outbound IPv6 / official AF_UNSPEC fix\n" +
         "\n".join(("CONFIG_LWIP_IPV6=y", "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
                    "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
-                   "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y")) + "\n")
+                   "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y",
+                   "CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y")) + "\n")
 
     # Wire only the Xiaozhi-owned connection and provisioning lifecycle to
     # a locked-down policy. This does not call esp_wifi_init, create an AP,
@@ -177,7 +215,7 @@ def prepare(voice: Path, project: Path) -> None:
         wifi_src = wifi_src.replace(old, new, 1)
 
     swap_once('#include "wifi_board.h"\n',
-              '#include "wifi_board.h"\n#include "s3_gateway_policy.h"\n',
+              '#include "wifi_board.h"\n#include "s3_gateway_policy.h"\n#include "s3_gateway_session.h"\n#include "s3_gateway_workers.h"\n',
               "policy header")
     swap_once('static const char *TAG = "WifiBoard";\n',
               'static const char *TAG = "WifiBoard";\n'
@@ -190,12 +228,17 @@ def prepare(voice: Path, project: Path) -> None:
               '    switch (event) {\n'
               '        case NetworkEvent::Connected:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_STA_CONNECTED);\n'
+              '            s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_STA_ONLINE);\n'
               '            break;\n'
               '        case NetworkEvent::Disconnected:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_STA_DISCONNECTED);\n'
+              '            s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_STA_LOST);\n'
+              '            s3_gateway_workers_revoke();\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeEnter:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_ENTER);\n'
+              '            s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_CONFIG_ENTER);\n'
+              '            s3_gateway_workers_revoke();\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeExit:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_EXIT);\n'
@@ -236,7 +279,16 @@ def main() -> None:
         )
         require((voice / "CMakeLists.txt").read_text() == original + ROOT_HOOK_CMAKE,
                 "Root CMake changed beyond allowlisted official lwIP hook")
+        board = voice / BOARD / "esp32-s3-touch-lcd-4b.cc"
+        pinned = subprocess.check_output(
+            ["git", "-C", str(voice), "show",
+             "HEAD:" + BOARD + "/esp32-s3-touch-lcd-4b.cc"],
+            text=True
+        )
+        require(board.read_text() == expected_board_overlay(pinned),
+                "Board source differs from exact physical-key overlay")
         print("P4_4B_ROOT_CMAKE_SAFE_PASS official IDF hook, no partition edits")
+        print("P4_2_KEY_OVERLAY_VERIFIED GPIO0 voice key unchanged")
         return
     if args.inspect_only:
         inspect(voice, project)

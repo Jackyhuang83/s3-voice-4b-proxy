@@ -39,10 +39,17 @@ jobs:
         run: |
           set -euo pipefail
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
-             -Icomponents/s3_gateway_policy \
+             -Icomponents/s3_gateway_policy -Icomponents/s3_gateway_session \
+             components/s3_gateway_session/s3_gateway_session.c \
              components/s3_gateway_policy/s3_gateway_policy.c \
              tests/p4/test_gateway_policy.c -o /tmp/p4_gateway_policy
           /tmp/p4_gateway_policy
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+             -Icomponents/s3_gateway_policy -Icomponents/s3_gateway_session \
+             components/s3_gateway_session/s3_gateway_session.c \
+             components/s3_gateway_policy/s3_gateway_policy.c \
+             tests/p4/test_device_session_gate.c -o /tmp/p4_device_gate
+          /tmp/p4_device_gate
           ! grep -R 'esp_wifi_init\|esp_wifi_set_mode\|nvs_flash_erase' components/s3_gateway_policy
           ! grep -R 'SOCK_DGRAM\|socket(' components/s3_gateway_policy
 
@@ -73,6 +80,25 @@ jobs:
           ! grep -E '(^|[^_])socket\(|SOCK_DGRAM|sendto\(' \
             components/s3_gateway_dns/s3_gateway_dns_processor.c
 
+      - name: Host authenticated SS2022 / verified VLESS DNS node probe
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Itests/p4/stubs -Icomponents/s3_gateway_dns \
+            -Icomponents/s3_ss2022 -Icomponents/s3_vless_tls \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            components/s3_gateway_dns/s3_gateway_dns_probe.c \
+            tests/p4/test_dns_probe.c -o /tmp/p4_node_probe
+          /tmp/p4_node_probe
+
+      - name: Host node lifetime and revocation no-use-after-rekey matrix
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic             -Icomponents/s3_gateway_ap             components/s3_gateway_ap/s3_gateway_runtime_guard.c             tests/p4/test_runtime_guard.c -o /tmp/p4_runtime_guard
+          /tmp/p4_runtime_guard
+          grep -q 's3_gateway_runtime_guard_enter' components/s3_gateway_ap/s3_gateway_workers.c
+          grep -q 's3_gateway_runtime_guard_quiescent' components/s3_gateway_ap/s3_gateway_workers.c
+
       - name: Host WPA2 AP input-validation guard
         run: |
           set -euo pipefail
@@ -81,6 +107,17 @@ jobs:
             components/s3_gateway_ap/s3_gateway_ap_config.c \
             tests/p4/test_ap_credentials.c -o /tmp/p4_ap_check
           /tmp/p4_ap_check
+
+      - name: P4-2 epoch-fenced supervisor negative matrix (no device)
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_session \
+            components/s3_gateway_session/s3_gateway_session.c \
+            tests/p4/test_gateway_session.c -o /tmp/p4_gateway_session
+          /tmp/p4_gateway_session
+          ! grep -E 'esp_wifi_init|esp_wifi_set_mode|nvs_flash_erase|socket\\(' \
+            components/s3_gateway_session/s3_gateway_session.c
 
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
@@ -103,8 +140,14 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y' voice/sdkconfig.defaults.esp32s3
           grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
+          grep -q 'S3_SESSION_STA_LOST' voice/main/boards/common/wifi_board.cc
+          grep -q 's3_gateway_workers_revoke' voice/main/boards/common/wifi_board.cc
+          grep -q 's3_gateway_workers_admin_button_toggle' voice/main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc
+          grep -q 's3_gateway_console_start' voice/main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc
+          grep -q 'revoke_monitor' components/s3_gateway_ap/s3_gateway_workers.c
           ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
 
       - name: Import pinned, patched P1 IPv4 flow core for IDF6 ABI compile
@@ -127,6 +170,7 @@ jobs:
           grep -Fq "s_enabled = false;" voice/components/s3_tcp_guard/transparent_tcp.c
           grep -Fq "void transparent_tcp_uninstall_ap_output(void)" voice/components/s3_tcp_guard/transparent_tcp.c
           grep -Fq "bool transparent_tcp_is_reinjecting(void)" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "bool transparent_tcp_ap_output_installed(void)" voice/components/s3_tcp_guard/transparent_tcp.c
 
       - name: Pin the original Xiaozhi Wi-Fi owner and prevent second NVS erase
         run: |
@@ -156,9 +200,17 @@ jobs:
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
           grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
           grep -q "s3_gateway_dns_udp.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_tcp.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_probe.c" build/compile_commands.json
           grep -q "s3_gateway_tcp_server.c" build/compile_commands.json
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
+          grep -q "s3_gateway_workers.c" build/compile_commands.json
+          grep -q "s3_gateway_console.c" build/compile_commands.json
+          grep -q "s3_gateway_vless_node.c" build/compile_commands.json
+          grep -q "s3_gateway_runtime_guard.c" build/compile_commands.json
+          grep -q "s3_gateway_workers_admin_arm_saved_ss2022" components/s3_gateway_ap/s3_gateway_workers.c
+          grep -q "s3_gateway_session.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
@@ -166,6 +218,7 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
           grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' sdkconfig
+          grep -qx 'CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF=y' sdkconfig
           grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
           echo "PASS Xiaozhi voice + SS2022/VLESS + P1 patched TCP core, IDF6 ABI compile"
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"
@@ -177,12 +230,31 @@ jobs:
           git -C voice diff -- sdkconfig.defaults partitions/v2/16m.csv \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc \
             CMakeLists.txt
           python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
           test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc)"
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json)"
           test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
           echo "PASS voice source and recovery-critical flash layout unchanged"
+
+      - name: Prepare hash-labeled software-only test candidate
+        working-directory: voice
+        run: |
+          set -euo pipefail
+          test -s build/xiaozhi.bin
+          sha256sum build/xiaozhi.bin > build/P4-2-APP-SHA256.txt
+          printf 'R1 P4-2 TEST ONLY. Not yet hardware validated.\n' >> build/P4-2-APP-SHA256.txt
+          printf 'Source run: %s\n' "$GITHUB_SHA" >> build/P4-2-APP-SHA256.txt
+          printf 'Never flash without original device, NVS, OTA and assets backup.\n' >> build/P4-2-APP-SHA256.txt
+
+      - name: Upload isolated APP test candidate (no merged flash overwrite)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: R1-P4-2-4B-SOFTWARE-ONLY-UNVERIFIED
+          path: |
+            voice/build/xiaozhi.bin
+            voice/build/P4-2-APP-SHA256.txt
+          if-no-files-found: error
+          retention-days: 7

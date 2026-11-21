@@ -84,7 +84,7 @@ def main():
         '    s3_gateway_ap_before_stop();\n'
         '    esp_wifi_stop();\n'
         '    if (!s3_gateway_ap_after_stop()) {\n'
-        '        ESP_ERROR_CHECK(ESP_FAIL); /* Cannot reuse stale AP netif */\n'
+        '        ESP_LOGE(TAG, "Gateway AP drain failed; retaining isolated AP netif");\n'
         '    }\n', 1)
     # The ORIGINAL upstream file mentions esp_wifi_init() in a comment.
     # Assert no new call/string was introduced rather than rejecting its

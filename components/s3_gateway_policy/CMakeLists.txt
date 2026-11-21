@@ -2,5 +2,5 @@
 idf_component_register(
   SRCS "s3_gateway_policy.c" "s3_gateway_ip4.c" "s3_gateway_ip6.c"
   INCLUDE_DIRS "."
-  REQUIRES lwip s3_tcp_guard
+  REQUIRES lwip s3_tcp_guard s3_gateway_session
 )

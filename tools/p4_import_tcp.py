@@ -63,6 +63,14 @@ def main() -> None:
         "{\n"
         "    return s_reinjecting;\n"
         "}\n\n"
+        "/* Verified on lwIP core before advertising OUTPUT_HOOK_READY. */\n"
+        "bool transparent_tcp_ap_output_installed(void)\n"
+        "{\n"
+        "    return s_ap_netif && s_ap_original_output &&\n"
+        "           s_ap_original_linkoutput &&\n"
+        "           s_ap_netif->output == transparent_tcp_ap_output &&\n"
+        "           s_ap_netif->linkoutput == transparent_tcp_ap_linkoutput;\n"
+        "}\n\n"
         "void transparent_tcp_uninstall_ap_output(void)\n"
         "{\n"
         "    s_enabled = false;\n"
@@ -88,7 +96,8 @@ def main() -> None:
         header_anchor + "\n"
         "/* P4-1 lifecycle: core-thread-only restore before AP teardown. */\n"
         "void transparent_tcp_uninstall_ap_output(void);\n"
-        "bool transparent_tcp_is_reinjecting(void);", 1)
+        "bool transparent_tcp_is_reinjecting(void);\n"
+        "bool transparent_tcp_ap_output_installed(void);", 1)
     require(not (voice / "components/s3_tcp_guard").exists(),
             "Refuse overwriting existing router integration component")
 

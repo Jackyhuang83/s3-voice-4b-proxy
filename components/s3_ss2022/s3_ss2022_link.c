@@ -191,6 +191,14 @@ bool s3_ss2022_start_clock(void)
 
 static bool time_ready(uint64_t *now)
 {
+    /* Reuse already synchronized Xiaozhi system time. Never require a
+     * competing SNTP instance when the global system clock is valid.
+     */
+    time_t current = time(NULL);
+    if (current >= (time_t)1700000000) {
+        *now = (uint64_t)current;
+        return true;
+    }
     if (!s_sntp_started) return false;
     if (!s_sntp_synced) {
         if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK) return false;
