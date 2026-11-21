@@ -1,0 +1,27 @@
+# Build products
+build/
+.pio/
+dist/
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
+!sdkconfig.defaults.*
+*.bin
+*.elf
+*.map
+*.uf2
+
+# Local secrets / device configurations
+.env
+.env.*
+!.env.example
+config/local.json
+config/*secret*
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+nvs.bin
+nvs*.bin
