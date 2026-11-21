@@ -281,6 +281,28 @@ interface. DNS-over-TCP fallback remains unimplemented. Compilation
 proves API compatibility, **not** real AP DNS transport or no-leak
 packet capture.
 
+## Local transparent TCP listener (source-only)
+
+A new `s3_gateway_tcp` component implements a bounded TCP listener
+bound **only** to official `WIFI_AP_DEF` IPv4, port **15001**
+(the original P1 interception rewrite port; checked against the pinned
+source). Accepted peer IP/port must match an actual previously
+intercepted P1 flow and the AP subnet. The original target domain is
+recovered from the encrypted-DNS cache when available, otherwise
+from the intercepted target IPv4. Data is relayed **only** through the
+previously validated `s3_ss2022_relay` or `s3_vless_tls_relay`
+interfaces. It never calls `connect()` on the original destination.
+The accepted client is always closed and its intercepted flow entry
+cleared on exit. There is no default direct fallback.
+
+**Not a running gateway yet:** no task starts the listener, no client
+worker limit/cancellation supervision has been wired to STA or config
+mode changes, and the AP netif has not been created. The synchronous
+one-connection routine must be called only from a future bounded
+gateway worker, never an audio/Wi-Fi callback. Full pipeline smoke
+tests, AP output rewriter installation, and fail-closed teardown are
+not yet completed.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.

@@ -27,7 +27,7 @@ PROTECTED = [
     "main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc",
     PARTITIONS,
 ]
-COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns", "s3_gateway_ap")
+COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns", "s3_gateway_ap", "s3_gateway_tcp")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
 # Exact permitted root-CMake append, never a partition or main-entry rewrite.
 ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n# The hook symbol lives in a static library ordered before lwIP. Force\n# archive extraction, equivalent to -u on GNU ld; never rely on link order.\ntarget_link_options(xiaozhi.elf PRIVATE \"-Wl,--undefined=s3_gateway_ip4_input\" \"-Wl,--undefined=lwip_hook_ip6_input\")\n"
@@ -116,7 +116,7 @@ def prepare(voice: Path, project: Path) -> None:
     injected = (
         CMAKE_NEEDLE +
         "# P4-1 component dependencies only; no target_* commands in IDF script mode.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy s3_gateway_dns s3_gateway_ap)\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy s3_gateway_dns s3_gateway_ap s3_gateway_tcp)\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}

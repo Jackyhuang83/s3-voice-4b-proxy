@@ -43,6 +43,8 @@ def main() -> None:
                      "header[9] == 17", "source_port == 68",
                      "destination_port == 67", "transparent_tcp_ip4_input"):
         require(expected in c_file, "P1 IPv4 flow guard absent: " + expected)
+    require("#define TRANSPARENT_RELAY_PORT 15001" in c_file,
+            "Router TCP relay ingress port changed")
     require("TRANSPARENT_TCP_MAX_FLOWS" in h_file,
             "Unexpected upstream flow data structure")
 

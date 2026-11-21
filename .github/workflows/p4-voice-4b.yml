@@ -153,6 +153,7 @@ jobs:
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
           grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
           grep -q "s3_gateway_dns_udp.c" build/compile_commands.json
+          grep -q "s3_gateway_tcp_server.c" build/compile_commands.json
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
