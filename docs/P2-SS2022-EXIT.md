@@ -1,6 +1,6 @@
 # P2-3 SS2022 IPv4 服务端互通 / Fail-Closed 阶段退出验收
 
-状态：**PENDING CI**。计划权重：P2 的 30%。同一阶段只允许 #8（已合并）、#9（已合并）和本 P2-3 PR（在开发）三个 PR。
+状态：**PASS / MERGED**。P2 #8/#9/#10 共三个计划 PR 已全部合并，阶段自动化验收通过，P2 100%。
 
 ## 已调查并复用的官方实现
 
@@ -43,4 +43,6 @@
 
 ## P2 退出状态
 
-**PENDING:** 必须以 GitHub Actions 实际成功、所有 PR 检查及合并记录为准；如果官方容器互通失败，就在本 P2-3 PR 修复或明确记录剩余阻断，不得用 Python mock（P2-2 证据）替代官方服务端通过。
+**PASS（官方真实协议服务端互通，非公网 VPS 或 4B 实机）**： [PR #10](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/10) 已 Squash Merge，合并 SHA `31fbb815851eab6afa0af574d760f89eb85a9154`。 [官方服务器 CI run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44879299827) success。实际日志确认：TCP `pong`、加密 TCP/53 DNS、错误 PSK、错误 DNS 密钥、重复 Salt 拒绝、过期时间戳拒绝、服务器停机 Fail-Closed 全部 PASS。固定 PR Head SHA 上的 7 项 GitHub Actions（含 P0/P1/P2-1/P2-2）全部通过，修改后 ESP32-S3 R8N16 固件编译成功。
+
+**NOT RUN / P3-P4 继续验收**：真实公网 VPS、4B Wi-Fi/音频/LCD、IPv6-only VPS、NVS 加密及生产安全发布。P2 的 100% 仅代表其既定源码、自动化及官方 SS2022 服务端互通门槛，不能宣称可在用户设备中安全运行。
