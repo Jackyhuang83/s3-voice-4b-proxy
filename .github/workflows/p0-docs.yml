@@ -1,0 +1,30 @@
+name: P0 documentation baseline (NOT firmware build)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  docs-baseline:
+    name: Baseline documents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify baseline artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in README.md docs/REQUIREMENTS.md docs/PLAN.md docs/UPSTREAM.md docs/RESEARCH.md .gitignore; do
+            test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
+          done
+          grep -q 'R1' docs/REQUIREMENTS.md
+          grep -q 'R2' docs/REQUIREMENTS.md
+          grep -q 'IPv6-only' docs/REQUIREMENTS.md
+          grep -q 'dfb04b03154cfaee1d8615e4b8942dfe737abc5d' docs/UPSTREAM.md
+          grep -q '57f73602e963e478e06eae5f8108d07495468031' docs/UPSTREAM.md
+          echo 'P0 documentation only: no firmware was built.'
