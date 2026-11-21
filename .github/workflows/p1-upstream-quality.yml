@@ -1,0 +1,60 @@
+name: P1 upstream TCP engine source-quality gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-quality:
+    name: Pinned yanxke source — lint and static analysis
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install official upstream tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy
+          python -m pip install platformio==6.1.18
+
+      - name: Checkout exact upstream commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = "dfb04b03154cfaee1d8615e4b8942dfe737abc5d"
+
+      - name: Upstream C formatting check
+        working-directory: upstream
+        run: |
+          clang-format --dry-run --Werror --style=file \
+            src/main.c src/transparent_tcp.c src/xudp_codec.c src/singmux_codec.c \
+            src/transparent_tcp.h src/xudp_codec.h src/singmux_codec.h include/lwip_router_hook.h
+
+      - name: Upstream control-flow brace check
+        working-directory: upstream
+        run: |
+          python tools/check_control_flow_braces.py src/main.c src/transparent_tcp.c src/xudp_codec.c src/singmux_codec.c
+
+      - name: Upstream firmware static analysis
+        working-directory: upstream
+        run: |
+          pio check -e esp32s3_r8n16 --fail-on-defect medium
+
+      - name: Verification boundary
+        run: |
+          echo "Lint and static analysis only, against unmodified upstream source."
+          echo "No TCP-only removal, SS2022, TLS, IPv6-only node, or 4B hardware behavior tested."
