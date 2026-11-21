@@ -1,0 +1,73 @@
+{
+  "upstream_repository": "rlog/atoms3r-muse-firmware",
+  "upstream_commit": "57f73602e963e478e06eae5f8108d07495468031",
+  "blake3_portable_version": "1.8.2",
+  "source_files_unmodified": true,
+  "files": [
+    {
+      "source": "esp32/components/muse/muse_ss2022.c",
+      "path": "components/s3_ss2022/muse_ss2022.c",
+      "git_blob_sha1": "1d5a23e06a1964a742c42402ce13db206d2210b1"
+    },
+    {
+      "source": "esp32/components/muse/muse_ss2022.h",
+      "path": "components/s3_ss2022/muse_ss2022.h",
+      "git_blob_sha1": "bf8a976dda906e3e69d7ffa05826cda1175b67ff"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/blake3.c",
+      "path": "components/s3_ss2022/third_party/blake3/blake3.c",
+      "git_blob_sha1": "74fc2e73be1cb7849b7f4c959ea51b4671fa45d8"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/blake3.h",
+      "path": "components/s3_ss2022/third_party/blake3/blake3.h",
+      "git_blob_sha1": "08932954cb97d725053801cb394bf71b49856fcc"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/blake3_impl.h",
+      "path": "components/s3_ss2022/third_party/blake3/blake3_impl.h",
+      "git_blob_sha1": "facd5997435736a9f15491f490805ceff6c0453f"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/blake3_dispatch.c",
+      "path": "components/s3_ss2022/third_party/blake3/blake3_dispatch.c",
+      "git_blob_sha1": "52db905868928457a7bc73f81938856c7731e878"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/blake3_portable.c",
+      "path": "components/s3_ss2022/third_party/blake3/blake3_portable.c",
+      "git_blob_sha1": "062dd1b47fb6424f4d3db4c6edd2f90efcb92973"
+    },
+    {
+      "source": "LICENSE",
+      "path": "components/s3_ss2022/LICENSE-Apache-2.0",
+      "git_blob_sha1": "6c05926afc1216986393c614043eeed397311cd7"
+    },
+    {
+      "source": "NOTICE",
+      "path": "components/s3_ss2022/NOTICE-upstream",
+      "git_blob_sha1": "a0f22932e6554733744ee527f2511e261c280c8d"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/README.md",
+      "path": "components/s3_ss2022/third_party/blake3/README.md",
+      "git_blob_sha1": "1f97066f7d2d841904f357a269c24e886c5a4818"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/LICENSE_A2",
+      "path": "components/s3_ss2022/third_party/blake3/LICENSE_A2",
+      "git_blob_sha1": "d512ca94d0ca6bf6a7272b16c83f51b7045902ca"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/LICENSE_A2LLVM",
+      "path": "components/s3_ss2022/third_party/blake3/LICENSE_A2LLVM",
+      "git_blob_sha1": "8d11bec0e86f88276b155cd3214a3de45cdafeb7"
+    },
+    {
+      "source": "esp32/components/muse/third_party/blake3/LICENSE_CC0",
+      "path": "components/s3_ss2022/third_party/blake3/LICENSE_CC0",
+      "git_blob_sha1": "0e259d42c996742e9e3cba14c677129b2c1b6311"
+    }
+  ]
+}
