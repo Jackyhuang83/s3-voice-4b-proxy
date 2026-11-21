@@ -39,6 +39,30 @@ Status: **OPEN / partial source integration; P4-1 acceptance NOT YET MET**. This
 
 This is **not yet a functional gateway integration**. Linking SS2022 / VLESS library code alone does not connect to the existing lwIP IPv4 flow table, DNS service, STA IPv6 events or the device Wi-Fi AP. A complete P4-1 requires the voice-first runtime adapter plus a full integrated build and documented rollback preconditions. P4-1 remains **0% until its full PR is merged**.
 
+## Verified voice networking and credential lifecycle blockers
+
+The pinned upstream voice source has one existing **WifiManager** in
+main/boards/common/wifi_board.cc: StartNetwork() calls Initialize() / StartStation(),
+while StartWifiConfigMode() uses StartConfigAp() for provisioning. **That
+provisioning AP is not an Internet forwarding AP.** The proxy cannot launch
+a second esp_wifi_init/esp_wifi_start owner, replace the provisioning event
+callback, or keep a gateway AP running during recovery without an explicit
+shared-state design. Prefer an opt-in service layered on the existing
+WifiManager event lifecycles; treat configuration mode as gateway-disabled
+and fail closed.
+
+The pinned main/main.cc also calls nvs_flash_erase() if nvs_flash_init()
+returns ESP_ERR_NVS_NO_FREE_PAGES or ESP_ERR_NVS_NEW_VERSION_FOUND. On an
+existing voice device, never assert that an untested firmware switch
+preserves credentials merely because the partition CSV stays unchanged.
+P4 requires a non-destructive NVS snapshot/restore strategy and explicit
+handling of schema incompatibility before any hardware operation.
+
+References:
+- https://github.com/78/xiaozhi-esp32/blob/831ffd14188553cc887408b75396ae38618538e0/main/boards/common/wifi_board.cc
+- https://github.com/78/xiaozhi-esp32/blob/831ffd14188553cc887408b75396ae38618538e0/main/main.cc
+- https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi.html
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
