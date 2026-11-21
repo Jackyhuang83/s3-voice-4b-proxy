@@ -99,6 +99,7 @@ jobs:
           grep -q "s3_gateway_ip4.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
+          grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           test -f build/partition_table/partition-table.bin
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
@@ -115,10 +116,10 @@ jobs:
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc \
             CMakeLists.txt
+          python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
           test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
             main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc \
-            CMakeLists.txt)"
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc)"
           test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
           echo "PASS voice source and recovery-critical flash layout unchanged"
