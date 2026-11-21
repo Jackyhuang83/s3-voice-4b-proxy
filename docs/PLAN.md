@@ -26,7 +26,7 @@
 | P2 | [#10 / P2-3](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/10) | 固定官方 shadowsocks-rust 服务端 IPv4 TCP/DNS 互通、错误密钥/时间戳/盐重放/中断 Fail-Closed 自动测试，P2 阶段总结 | 官方服务端端到端 TCP/53、认证和故障负向测试 + 修改后 R8N16 CI；真实公网 VPS 与 4B 实测另标 NOT RUN | 30% | MERGED (#10; 31fbb815) |
 | P3 | [#11 / P3-1](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/11) | 复用官方 ESP-TLS 认证标准 VLESS TCP/DNS，保留上游流表并禁止旧明文 VLESS、直接 UDP 旁路 | CA/SNI/SAN 证书验证、读写与负向安全测试、修改后 R8N16 固件构建；Reality 不属于本 PR | 40% | MERGED (#11; 43befc6c) |
 | P3 | [#12 / P3-2](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/12) | 上游 STA IPv6 SLAAC、SS2022 AF_INET6/AAAA 代理节点拨号与 v1→v2 凭证兼容、VLESS 验证 TLS 的 AAAA IPv6-only 拨号 | 官方 Rust IPv6-only TCP/DNS、真实 IPv6 TLS CA/SNI、同节点 A 回退 + R8N16 全构建；AP 实机 IPv6 防泄漏留 P4 | 35% | MERGED (#12; b19c0c7f) |
-| P3 | P3-3 | SS2022 与 VLESS 对 IPv4/IPv6 VPS 的端到端互通，证书/路由中断测试，P3 总结 | 双协议双地址族验证通过；无凭证泄漏和违规直连 | 25% | PLANNED |
+| P3 | P3-3（最终计划 PR） | 官方 SS2022 IPv4/IPv6 TCP/DNS、错误密钥/重放/过期/离线；VLESS/TLS IPv4/IPv6 证书及过期证书；DNS 事务 ID/QR Fail-Closed 回归；P3 退出验收 | 同一 PR Head 的双协议双地址族真实协议测试、负向故障矩阵、R8N16 全构建及历史回归全部 PASS；真实公网与 4B 实机留 P4 | 25% | OPEN / CI pending |
 | P4 | P4-1 | 微雪 4B 对应板型与小智语音/LCD/Wi-Fi 驱动资源集成、无损回退方案 | 确认正确硬件版本和资源配置，不覆盖稳定镜像；完成集成构建 | 35% | PLANNED |
 | P4 | P4-2 | 4B 真机 Wi-Fi AP 客户端透明 TCP、IPv6-only VPS、DHCP/DNS、防泄漏、重启及长期运行验收 | 实机日志、问题清单、自动与现场验证分离；语音显示无回归 | 40% | PLANNED |
 | P4 | P4-3 | 安全与性能收尾、Recovery 操作、固件 release | 可复现构建、回滚文档、实机验收证据和发布检查表 | 25% | PLANNED |
