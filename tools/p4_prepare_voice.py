@@ -27,7 +27,7 @@ PROTECTED = [
     "main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc",
     PARTITIONS,
 ]
-COMPONENTS = ("s3_ss2022", "s3_vless_tls")
+COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
 
 
@@ -115,7 +115,7 @@ def prepare(voice: Path, project: Path) -> None:
         CMAKE_NEEDLE +
         "# P4-1 isolated compile-only transport ABI gate.\n"
         "# There is deliberately NO packet hook, AP service or startup path.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard)\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy)\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}
@@ -162,9 +162,53 @@ def prepare(voice: Path, project: Path) -> None:
         "\n".join(("CONFIG_LWIP_IPV6=y", "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
                    "CONFIG_LWIP_USE_ESP_GETADDRINFO=y")) + "\n")
 
+    # Wire only the Xiaozhi-owned connection and provisioning lifecycle to
+    # a locked-down policy. This does not call esp_wifi_init, create an AP,
+    # send packets, or arm the proxy. It is safe to ship in a non-gateway image.
+    wifi_board = voice / "main/boards/common/wifi_board.cc"
+    wifi_src = wifi_board.read_text()
+    def swap_once(old: str, new: str, label: str) -> None:
+        nonlocal wifi_src
+        require(wifi_src.count(old) == 1,
+                "Xiaozhi Wi-Fi owner drifted: " + label)
+        wifi_src = wifi_src.replace(old, new, 1)
+
+    swap_once('#include "wifi_board.h"\n',
+              '#include "wifi_board.h"\n#include "s3_gateway_policy.h"\n',
+              "policy header")
+    swap_once('static const char *TAG = "WifiBoard";\n',
+              'static const char *TAG = "WifiBoard";\n'
+              '/* Voice owns station and config mode; no auto-arm on restart. */\n'
+              'static s3_gateway_policy_t s3_voice_gateway_policy = S3_GATEWAY_POLICY_INIT;\n',
+              "policy owner")
+    swap_once('void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {\n',
+              'void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {\n'
+              '    /* Only lifecycle notifications. The gateway AP and relay are still off. */\n'
+              '    switch (event) {\n'
+              '        case NetworkEvent::Connected:\n'
+              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_STA_CONNECTED);\n'
+              '            break;\n'
+              '        case NetworkEvent::Disconnected:\n'
+              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_STA_DISCONNECTED);\n'
+              '            break;\n'
+              '        case NetworkEvent::WifiConfigModeEnter:\n'
+              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_CONFIG_ENTER);\n'
+              '            break;\n'
+              '        case NetworkEvent::WifiConfigModeExit:\n'
+              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_CONFIG_EXIT);\n'
+              '            break;\n'
+              '        default:\n'
+              '            break;\n'
+              '    }\n',
+              "network callback")
+    require("esp_wifi_init(" not in wifi_src,
+            "Gateway must not introduce a second Wi-Fi initialization")
+    wifi_board.write_text(wifi_src)
+
     print("P4_4B_SOURCE_PREFLIGHT_PASS board, voice drivers, exact SHA, pin and flash invariants")
     print("P4_4B_NVS_ERASE_BLOCKED source guard; actual NVS migration NOT RUN")
     print("P4_4B_DUAL_STACK_CONFIGURED IDF6 AF_UNSPEC adapter; real IPv6 NOT RUN")
+    print("P4_4B_LIFECYCLE_WIRED voice-owned STA/config events; no auto-arm or AP start")
     print("P4_4B_COMPONENT_LINK_PREPARED under pinned Xiaozhi IDF >=6.0.1")
     print("NOT RUN: forwarding, AP/STA IPv6, voice regression on device, NVS encryption, flashing")
 

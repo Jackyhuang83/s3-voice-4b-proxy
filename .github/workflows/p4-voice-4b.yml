@@ -31,7 +31,19 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile tools/p4_prepare_voice.py
+          python -m py_compile tools/p4_import_tcp.py
           python tools/check_ss2022_vendor.py
+
+      - name: Host C11 negative matrix for 4B fail-closed lifecycle policy
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+             -Icomponents/s3_gateway_policy \
+             components/s3_gateway_policy/s3_gateway_policy.c \
+             tests/p4/test_gateway_policy.c -o /tmp/p4_gateway_policy
+          /tmp/p4_gateway_policy
+          ! grep -R 'esp_wifi_init\|esp_wifi_set_mode\|nvs_flash_erase' components/s3_gateway_policy
+          ! grep -R 'SOCK_DGRAM\|socket(' components/s3_gateway_policy
 
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
@@ -53,6 +65,9 @@ jobs:
           grep -q 'refusing automatic erase' voice/main/main.cc
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
+          grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
+          grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
+          ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
 
       - name: Import pinned, patched P1 IPv4 flow core for IDF6 ABI compile
         run: |
@@ -80,6 +95,7 @@ jobs:
           python scripts/build.py waveshare/esp32-s3-touch-lcd-4b \
             --name esp32-s3-touch-lcd-4b --language zh-CN
           test -s build/merged-binary.bin
+          grep -q "s3_gateway_policy" build/compile_commands.json
           test -f build/partition_table/partition-table.bin
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig

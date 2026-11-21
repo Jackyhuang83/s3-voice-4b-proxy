@@ -103,6 +103,29 @@ and no proxy credential is added. Successfully compiling this core does
 fail-closed gateway lifecycle remain mandatory *within this same PR*
 before P4-1 is eligible to merge.
 
+## P4-1 voice-owned connection lifecycle policy (host-negative-tested)
+
+The initial compile-only proof is now augmented with a small reusable
+s3_gateway_policy C11 component that consumes **the existing Xiaozhi
+WifiBoard::OnNetworkEvent events**: STA connected/disconnected, provisioning
+AP enter/exit. All policy mutations use 32-bit atomic compare/exchange so
+asynchronous Wi-Fi notifications cannot accidentally re-arm routing.
+
+The downstream decision matrix allows only AP-local DHCPv4 (68→67) and
+AP-local DNS (53) without upstream authorization. External TCP is
+intercept-eligible **only** after station online, validated node, live
+relay worker and explicit administrator arm; internet UDP/QUIC, ICMP,
+non-DNS AP-local management and all untrusted transitions are denied.
+STA disconnect, switching to configuration mode, relay failure or node
+invalidity immediately clear arm/readiness, and recovery never auto-arms.
+
+**Crucial scope boundary**: only STA/provisioning events are wired today.
+There is intentionally **no code path issuing NODE_VALIDATED, RELAY_READY
+or ADMIN_ARM on the 4B**, and no AP data plane or lwIP hook starts.
+This prevents premature exposure while the single-owner APSTA service
+and encrypted relay wiring are developed in this same PR. Host tests
+validate the policy, but no on-device isolation or forwarding has passed.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
