@@ -6,6 +6,7 @@
 #include "s3_vless_tls.h"
 
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <sys/select.h>
@@ -287,12 +288,14 @@ bool s3_vless_tls_dns_query(const char *server_hostname, uint16_t server_port,
         close_conn(&s);
         return false;
     }
-    uint8_t lenbuf[2];
+    uint8_t lenbuf[2] = {0};
     ok = tls_read_exact(s.tls, lenbuf, 2);
     size_t reply_len = ((size_t)lenbuf[0] << 8) | lenbuf[1];
     uint8_t response[512];
     if (ok && reply_len >= 12 && reply_len <= sizeof(response) &&
-        tls_read_exact(s.tls, response, reply_len)) {
+        tls_read_exact(s.tls, response, reply_len) &&
+        response[0] == packet[0] && response[1] == packet[1] &&
+        (response[2] & 0x80)) {
         /* Preserve caller bytes on all failure paths; reply is authenticated
            by the TLS certificate and encrypted transport. */
         memcpy(packet, response, reply_len);
