@@ -1,0 +1,107 @@
+name: P3-1 Verified VLESS ESP-TLS and no plaintext fallback
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vless-tls:
+    name: Verified TLS VLESS+DNS SAN/SNI tests and R8N16 build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install host OpenSSL, clang-format and pinned firmware builder
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev clang-format
+          python -m pip install --disable-pip-version-check platformio==6.1.18
+
+      - name: Compile actual VLESS ESP-TLS C adapter against host OpenSSL
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -Wall -Wextra -fsanitize=address,undefined \
+            -Itests/vless_tls/host_stubs -Icomponents/s3_vless_tls \
+            components/s3_vless_tls/s3_vless_tls.c \
+            tests/vless_tls/host_esp_tls_openssl.c \
+            tests/vless_tls/vless_tls_probe.c \
+            -lssl -lcrypto -o /tmp/s3_vless_tls_probe
+
+      - name: Execute real TLS with ephemeral CA, SNI, hostname and failure cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          S3_VLESS_TLS_PROBE=/tmp/s3_vless_tls_probe \
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+          UBSAN_OPTIONS=halt_on_error=1 \
+            python tests/vless_tls/test_tls_interop.py
+
+      - name: Checkout exact upstream and apply stable P1 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          for patch in \
+            patches/0001-tcp-only-drop-internet-udp.patch \
+            patches/0002-tcp-only-enforce-no-direct-route.patch \
+            patches/0003-validate-and-fail-closed-ipv4-input.patch \
+            patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C upstream apply --check "../$patch"
+            git -C upstream apply "../$patch"
+          done
+
+      - name: Apply exactly one P2 and one P3 adapter into temporary firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_ss2022_vendor.py
+          mkdir -p upstream/components
+          cp -R components/s3_ss2022 upstream/components/s3_ss2022
+          cp -R components/s3_vless_tls upstream/components/s3_vless_tls
+          python tools/apply_p2_ss2022.py
+          python tools/apply_p3_vless_tls.py
+          python - <<'PY'
+          from pathlib import Path
+          cfg=Path("upstream/platformio.ini")
+          text=cfg.read_text()
+          anchor="[env:esp32s3_r8n16]\n"
+          assert text.count(anchor)==1
+          cfg.write_text(text.replace(anchor,anchor+"build_flags = -DS3_PROXY_TCP_ONLY=1\n",1))
+          PY
+
+      - name: Audit fail-closed VLESS TLS and format temporary C sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/vless_tls/test_source_integration.py
+          clang-format -i upstream/src/main.c upstream/src/transport_tcp.c \
+            upstream/components/s3_vless_tls/s3_vless_tls.c \
+            upstream/components/s3_vless_tls/s3_vless_tls.h
+          clang-format --dry-run --Werror --style=file \
+            upstream/src/main.c upstream/src/transport_tcp.c \
+            upstream/components/s3_vless_tls/s3_vless_tls.c \
+            upstream/components/s3_vless_tls/s3_vless_tls.h
+          python tests/vless_tls/test_source_integration.py
+
+      - name: Build complete ESP32-S3 R8N16 firmware including active VLESS TLS mode
+        working-directory: upstream
+        run: pio run -e esp32s3_r8n16
+
+      - name: Evidence boundary
+        run: |
+          echo "PASS: verified TLS/SNI/SAN on real host OpenSSL, official ESP-TLS API used and firmware compilation."
+          echo "NOT RUN: IPv6-only VPS/STA (P3-2), real public server dual-protocol (P3-3), 4B HW and NVS release security (P4)."
