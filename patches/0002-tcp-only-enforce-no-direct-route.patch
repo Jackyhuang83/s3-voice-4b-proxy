@@ -1,0 +1,43 @@
+diff --git a/src/main.c b/src/main.c
+--- a/src/main.c
++++ b/src/main.c
+@@ -411,9 +411,14 @@
+     return transparent_mode_uses_vless() ? "transparent-vless" : "transparent-upstream";
+ }
+ 
+-static void refresh_transparent_interception_state(void)
+-{
+-    bool enabled = s_has_upstream;
++static void refresh_transparent_interception_state(void)
++{
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++    /* Do not expose unfiltered AP flows when the upstream STA is down. */
++    bool enabled = true;
++#else
++    bool enabled = s_has_upstream;
++#endif
+     if (transparent_tcp_is_enabled() != enabled)
+     {
+         transparent_tcp_set_enabled(enabled);
+@@ -3833,9 +3838,18 @@
+     singmux_tcp_notify_all_closed();
+ }
+ 
+-static void set_transparent_mode(transparent_mode_t mode)
+-{
+-    if (s_transparent_mode == mode)
++static void set_transparent_mode(transparent_mode_t mode)
++{
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++    /* The original project permits an intentional unproxied direct route.
++       Never allow that route in a TCP-only proxy gateway release. */
++    if (mode == TRANSPARENT_MODE_UPSTREAM)
++    {
++        ESP_LOGW(TAG, "Direct routing is disabled in TCP-only proxy firmware");
++        return;
++    }
++#endif
++    if (s_transparent_mode == mode)
+     {
+         return;
+     }
