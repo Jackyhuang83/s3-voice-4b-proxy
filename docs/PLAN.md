@@ -23,7 +23,7 @@
 | P1 | [#7 / P1-4](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/7) | 集中补充源侧/宿主机回归测试：TCP、短 UDP、DHCP、AP 本地 DNS、分片异常、资源耗尽、断链及无直连旁路；P1 阶段总结 | 负向测试与修改后固件构建通过；未能模拟的真实 Wi-Fi 项目明确留至 P4 | 30% | MERGED (#7; a7692a898) |
 | P2 | [#8 / P2-1](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/8) | 从 rlog 选择性导入 AES128-GCM SS2022 TCP 协议和最低必要依赖，保留许可证 | 单元编译、协议向量、密钥/时间/内存边界审核 | 30% | MERGED (#8; 4864ea768) |
 | P2 | [#9 / P2-2](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/9) | 与现成透明 TCP 流表/中继接口结合：SS2022 请求封装、加密读写、连接资源生命周期 | 不复制 lwIP TCP 路由器；修改后固件编译及协议数据流测试 | 40% | MERGED (#9; 29022f735) |
-| P2 | [#10 / P2-3](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/10) | 固定官方 shadowsocks-rust 服务端 IPv4 TCP/DNS 互通、错误密钥/时间戳/盐重放/中断 Fail-Closed 自动测试，P2 阶段总结 | 官方服务端端到端 TCP/53、认证和故障负向测试 + 修改后 R8N16 CI；真实公网 VPS 与 4B 实测另标 NOT RUN | 30% | OPEN / CI pending |
+| P2 | [#10 / P2-3](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/10) | 固定官方 shadowsocks-rust 服务端 IPv4 TCP/DNS 互通、错误密钥/时间戳/盐重放/中断 Fail-Closed 自动测试，P2 阶段总结 | 官方服务端端到端 TCP/53、认证和故障负向测试 + 修改后 R8N16 CI；真实公网 VPS 与 4B 实测另标 NOT RUN | 30% | MERGED (#10; 31fbb815) |
 | P3 | P3-1 | VLESS 标准 TLS + ESP-TLS，统一加密 TCP stream I/O 边界 | 证书链/主机名/SNI、TLS 错误处理及 read/write/close 测试通过 | 40% | PLANNED |
 | P3 | P3-2 | 上游 STA IPv6 SLAAC/默认路由、AF_INET6/AAAA VPS 拨号，两协议接入同一个 TCP 连接层 | IPv6-only mock/远程 TCP、IPv4 fallback 规则验证；AP 仍 IPv4-only | 35% | PLANNED |
 | P3 | P3-3 | SS2022 与 VLESS 对 IPv4/IPv6 VPS 的端到端互通，证书/路由中断测试，P3 总结 | 双协议双地址族验证通过；无凭证泄漏和违规直连 | 25% | PLANNED |
@@ -46,16 +46,16 @@
 
 总进度 = Σ(阶段完成百分比 × 整体阶段权重)，四舍五入到整数百分比。避免在验收标准未变的情况下主观微调数字。
 
-### 当前快照（2026-11-21；P2-2 已验收并合并，真实 VPS 与 P4 实机尚未开始）
+### 当前快照（2026-11-21；P2 三个 PR 全部合并且自动化验收通过，P3/P4 及真实公网 VPS 实机尚未开始）
 
 | 阶段 | 完成率 | 计算依据 |
 |---|---:|---|
 | P0 | **100%** | #1/#2/#3 已合并：35+35+30 |
 | P1 | **100%** | #4/#5/#6/#7 已合并：15+30+25+30；仅代表 P1 源码与自动化门槛 |
-| P2 | **70%** | #8/#9 已合并：协议向量与独立本地 TCP/DNS 互通、Fail-Closed 源码验证、完整 R8N16 固件编译 PASS；真实 IPv4 VPS 待 P2-3 |
+| P2 | **100%** | #8/#9/#10 已合并：SIP022 向量 + 官方 ssserver-rust 实际协议 TCP/DNS 互通、错误密钥/重放/旧时间戳/离线负向测试、修改后 R8N16 编译全部 PASS；真实公网 VPS 与 4B 实机 NOT RUN |
 | P3 | **0%** | 未开始 |
 | P4 | **0%** | 未开始 |
-| **整体** | **53%** | 100%×10% + 100%×25% + 70%×25% = 52.5%，显示 53% |
+| **整体** | **60%** | 100%×10% + 100%×25% + 100%×25% = 60% |
 
 这是一张 **PR/阶段交付管理进度表**，不代表设备现在可用。特别是 P4 的 0% 表示尚未完成任何 4B 真机验收。
 
