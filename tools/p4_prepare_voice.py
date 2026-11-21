@@ -114,8 +114,9 @@ def prepare(voice: Path, project: Path) -> None:
     injected = (
         CMAKE_NEEDLE +
         "# P4-1 isolated compile-only transport ABI gate.\n"
-        "# There is deliberately NO packet hook, AP service or startup path.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy)\n"
+        "# The AP-only hook starts unbound; no Wi-Fi or relay service starts.\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy)\n" +
+        "# ESP-IDF 6 supported hook, inert unless a separate AP netif is bound.\n  idf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_include_directories(${s3_lwip} PRIVATE ${PROJECT_DIR}/components/s3_gateway_policy)\ntarget_compile_definitions(${s3_lwip} PRIVATE \"ESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}
@@ -179,23 +180,23 @@ def prepare(voice: Path, project: Path) -> None:
     swap_once('static const char *TAG = "WifiBoard";\n',
               'static const char *TAG = "WifiBoard";\n'
               '/* Voice owns station and config mode; no auto-arm on restart. */\n'
-              'static s3_gateway_policy_t s3_voice_gateway_policy = S3_GATEWAY_POLICY_INIT;\n',
+              '\n',
               "policy owner")
     swap_once('void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {\n',
               'void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {\n'
               '    /* Only lifecycle notifications. The gateway AP and relay are still off. */\n'
               '    switch (event) {\n'
               '        case NetworkEvent::Connected:\n'
-              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_STA_CONNECTED);\n'
+              '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_STA_CONNECTED);\n'
               '            break;\n'
               '        case NetworkEvent::Disconnected:\n'
-              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_STA_DISCONNECTED);\n'
+              '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_STA_DISCONNECTED);\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeEnter:\n'
-              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_CONFIG_ENTER);\n'
+              '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_ENTER);\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeExit:\n'
-              '            s3_gateway_policy_event(&s3_voice_gateway_policy, S3_GW_CONFIG_EXIT);\n'
+              '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_EXIT);\n'
               '            break;\n'
               '        default:\n'
               '            break;\n'
