@@ -96,12 +96,12 @@ Xiaozhi 4B CI compiles this core along with the existing SS2022/VLESS
 components. This detects cross-IDF C API drift while keeping one voice app,
 one existing WifiManager and the original OTA and resource partitions.
 
-**Deliberate safety limit:** the lwIP input hook is not enabled, the TCP
-relay server is not started, no AP forwarding configuration is modified,
-and no proxy credential is added. Successfully compiling this core does
-**NOT** demonstrate gateway functionality. Runtime wiring and a full
-fail-closed gateway lifecycle remain mandatory *within this same PR*
-before P4-1 is eligible to merge.
+**P4-1 safety limit:** the AP-only lwIP input hook and TCP core are
+compiled, but the transparent TCP listener/workers are not started or
+authorized, no client-forwarding is enabled, and no proxy credential is
+added. A successful 4B build does **not** demonstrate gateway
+functionality. The supervised AP runtime, node readiness and complete
+fail-closed start/stop sequence are mandatory **P4-2** acceptance gates.
 
 ## P4-1 voice-owned connection lifecycle policy (host-negative-tested)
 
@@ -126,7 +126,7 @@ This prevents premature exposure while the single-owner APSTA service
 and encrypted relay wiring are developed in this same PR. Host tests
 validate the policy, but no on-device isolation or forwarding has passed.
 
-## Official ESP-IDF AP-only lwIP hook (build gate pending)
+## Official ESP-IDF AP-only lwIP hook (CI compile gate PASS; hardware pending)
 
 The isolated voice-first build now contains a real
 `ESP_IDF_LWIP_HOOK_FILENAME` IPv4 input hook. It always returns
@@ -162,11 +162,12 @@ Local C11 tests passed with AddressSanitizer and UndefinedBehaviorSanitizer
 and a deterministic 100,000-input stress matrix. The PR's GitHub Actions
 now repeats both host tests and builds the module in IDF 6.1.
 
-**Not yet functional DNS forwarding:** the gateway has no active AP-local
-UDP/TCP :53 listener and no calls to `s3_ss2022_dns_query` or
-`s3_vless_tls_dns_query`; correct DHCP DNS offer settings (explicit in
-ESP-IDF 6.1), SS2022/VLESS encrypted relay, DNS cache and AP leak-proof
-packet capture remain P4-1 work.
+**Not yet functional DNS forwarding:** this source-only codec has since
+been connected to `s3_ss2022_dns_query` and `s3_vless_tls_dns_query`
+through the authenticated dispatcher below, and the AP-bound UDP
+listener is compiled. **No FreeRTOS task starts that listener yet**.
+DNS-over-TCP, DHCP/device packet tracing and actual AP leak testing are
+**P4-2** tasks; compilation does not validate them.
 
 ## Encrypted DNS tunnel dispatch (source only)
 
@@ -184,9 +185,11 @@ replies, invalid IDs and questions, transport failure, missing resolver,
 disabled transport, unauthorized gateway and mid-request disconnect.
 This is not evidence of DNS network connectivity.
 
-Still pending: one-owner APSTA lifecycle, secure node/SSID provisioning,
-UDP/TCP DNS listeners, AP DHCP DNS option, packet capture leak checks,
-live encrypted DNS/VLESS handshake, and hardware voice/audio regression.
+Following sections implement the compile-only one-owner APSTA prestart,
+strict AP credentials, UDP DNS entry point and DHCP DNS option.
+Still pending in **P4-2** are explicit safe authorization, listening
+worker startup/shutdown, DNS-over-TCP, AP packet leak checks, live proxy
+handshakes and hardware voice/audio regression.
 
 ## AP restart + IPv6 no-leak protection (source gate)
 
