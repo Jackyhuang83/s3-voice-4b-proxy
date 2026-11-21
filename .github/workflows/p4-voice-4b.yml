@@ -146,6 +146,7 @@ jobs:
           grep -q 'S3_SESSION_STA_LOST' voice/main/boards/common/wifi_board.cc
           grep -q 's3_gateway_workers_revoke' voice/main/boards/common/wifi_board.cc
           grep -q 's3_gateway_workers_admin_button_toggle' voice/main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc
+          grep -q 's3_gateway_console_start' voice/main/boards/waveshare/esp32-s3-touch-lcd-4b/esp32-s3-touch-lcd-4b.cc
           grep -q 'revoke_monitor' components/s3_gateway_ap/s3_gateway_workers.c
           ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
 
@@ -205,6 +206,7 @@ jobs:
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
           grep -q "s3_gateway_workers.c" build/compile_commands.json
+          grep -q "s3_gateway_console.c" build/compile_commands.json
           grep -q "s3_gateway_runtime_guard.c" build/compile_commands.json
           grep -q "s3_gateway_workers_admin_arm_saved_ss2022" components/s3_gateway_ap/s3_gateway_workers.c
           grep -q "s3_gateway_session.c" build/compile_commands.json

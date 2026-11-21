@@ -41,6 +41,11 @@ BOARD_LONG_PRESS = (
     '                }\n'
 )
 BOARD_ARM_GESTURE = (
+    '                } else if (press_duration >= 1100 && press_duration < 1800) {\n'
+    '                    /* Physical-only serial provisioning; no radio UI. */\n'
+    '                    if (!s3_gateway_console_start()) {\n'
+    '                        ESP_LOGW(TAG, "Physical setup console unavailable");\n'
+    '                    }\n'
     '                } else if (press_duration >= 1800 && press_duration < 3200) {\n'
     '                    /* Physical explicit arm/disarm, nonblocking key monitor. */\n'
     '                    if (!s3_gateway_workers_admin_button_toggle()) {\n'

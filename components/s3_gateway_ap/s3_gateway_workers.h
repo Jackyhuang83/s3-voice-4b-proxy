@@ -19,6 +19,8 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *node);
 bool s3_gateway_workers_admin_arm_saved_ss2022(void);
 /* Physical local IO-expander button. Task created only on demand. */
 bool s3_gateway_workers_admin_button_toggle(void);
+/* Physical IO-expander setup hold only: Espressif official stdio REPL. */
+bool s3_gateway_console_start(void);
 /* Nonblocking: safe in Xiaozhi Wi-Fi event callback; old epoch revoked. */
 void s3_gateway_workers_revoke(void);
 void s3_gateway_workers_request_stop(void);
