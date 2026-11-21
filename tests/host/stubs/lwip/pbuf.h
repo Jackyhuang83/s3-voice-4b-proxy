@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "lwip/err.h"
+typedef int16_t s16_t;
 #define PBUF_RAW 0
 #define PBUF_RAM 0
 struct pbuf { uint16_t len, tot_len; unsigned char *payload; };
