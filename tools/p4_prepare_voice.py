@@ -29,6 +29,8 @@ PROTECTED = [
 ]
 COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
+# Exact permitted root-CMake append, never a partition or main-entry rewrite.
+ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n"
 
 
 def digest(path: Path) -> str:
@@ -113,10 +115,8 @@ def prepare(voice: Path, project: Path) -> None:
     original = cmake_path.read_text()
     injected = (
         CMAKE_NEEDLE +
-        "# P4-1 isolated compile-only transport ABI gate.\n"
-        "# The AP-only hook starts unbound; no Wi-Fi or relay service starts.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy)\n" +
-        "# ESP-IDF 6 supported hook, inert unless a separate AP netif is bound.\n  idf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_include_directories(${s3_lwip} PRIVATE ${PROJECT_DIR}/components/s3_gateway_policy)\ntarget_compile_definitions(${s3_lwip} PRIVATE \"ESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n"
+        "# P4-1 component dependencies only; no target_* commands in IDF script mode.\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard s3_gateway_policy)\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}
@@ -205,6 +205,11 @@ def prepare(voice: Path, project: Path) -> None:
     require("esp_wifi_init(" not in wifi_src,
             "Gateway must not introduce a second Wi-Fi initialization")
     wifi_board.write_text(wifi_src)
+    root = voice / "CMakeLists.txt"
+    original_root = root.read_text()
+    require(original_root.rstrip().endswith("project(xiaozhi)"),
+            "Refuse changing root project() shape")
+    root.write_text(original_root + ROOT_HOOK_CMAKE)
 
     print("P4_4B_SOURCE_PREFLIGHT_PASS board, voice drivers, exact SHA, pin and flash invariants")
     print("P4_4B_NVS_ERASE_BLOCKED source guard; actual NVS migration NOT RUN")
@@ -219,8 +224,18 @@ def main() -> None:
     parser.add_argument("--voice", type=Path, required=True)
     parser.add_argument("--project", type=Path, default=Path("."))
     parser.add_argument("--inspect-only", action="store_true")
+    parser.add_argument("--verify-assembled", action="store_true")
     args = parser.parse_args()
     voice, project = args.voice.resolve(), args.project.resolve()
+    if args.verify_assembled:
+        original = subprocess.check_output(
+            ["git", "-C", str(voice), "show", "HEAD:CMakeLists.txt"],
+            text=True
+        )
+        require((voice / "CMakeLists.txt").read_text() == original + ROOT_HOOK_CMAKE,
+                "Root CMake changed beyond allowlisted official lwIP hook")
+        print("P4_4B_ROOT_CMAKE_SAFE_PASS official IDF hook, no partition edits")
+        return
     if args.inspect_only:
         inspect(voice, project)
         print("P4_4B_SOURCE_PREFLIGHT_PASS")
