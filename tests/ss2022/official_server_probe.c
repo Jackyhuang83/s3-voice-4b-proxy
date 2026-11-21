@@ -26,7 +26,9 @@ static const int ECHO_PORT = 19443;
 static void node(s3_ss2022_node_t *n, int port, bool wrong)
 {
     assert(port > 0 && port < 65536);
-    assert(s3_ss2022_node_store("127.0.0.1", (uint16_t)port,
+    const char *proxy_host = getenv("S3_SS2022_TEST_PROXY_HOST");
+    if (!proxy_host || !*proxy_host) proxy_host = "127.0.0.1";
+    assert(s3_ss2022_node_store(proxy_host, (uint16_t)port,
                                wrong ? BAD_KEY : GOOD_KEY));
     assert(s3_ss2022_node_load(n));
     assert(s3_ss2022_start_clock());
