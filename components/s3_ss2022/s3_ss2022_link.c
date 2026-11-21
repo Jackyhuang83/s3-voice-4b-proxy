@@ -339,13 +339,23 @@ bool s3_ss2022_relay(int client, const s3_ss2022_node_t *node,
         idle = 0;
         if (FD_ISSET(client, &readfds)) {
             ssize_t n = recv(client, s.io, S3_SS2022_IO_SIZE, 0);
-            if (n == 0) { ok = true; break; }
+            if (n == 0) {
+                /* Remote EOF (or local half-close) before any authenticated
+                   server response is NOT a successful SS2022 connection. */
+                ok = s.rx->phase == 2 && !s.rx->failed;
+                break;
+            }
             if (n < 0 || !session_write(&s, s.io, (size_t)n)) break;
             if (upload) upload((size_t)n);
         }
         if (FD_ISSET(s.fd, &readfds)) {
             ssize_t n = recv(s.fd, s.io, S3_SS2022_IO_SIZE, 0);
-            if (n == 0) { ok = true; break; }
+            if (n == 0) {
+                /* Remote EOF (or local half-close) before any authenticated
+                   server response is NOT a successful SS2022 connection. */
+                ok = s.rx->phase == 2 && !s.rx->failed;
+                break;
+            }
             if (n < 0 || !ss2022_feed(s.rx, s.io, (size_t)n, (uint64_t)time(NULL),
                                       relay_emit, &output)) break;
         }
