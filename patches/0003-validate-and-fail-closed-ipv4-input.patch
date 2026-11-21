@@ -1,0 +1,228 @@
+diff --git a/src/transparent_tcp.c b/src/transparent_tcp.c
+--- a/src/transparent_tcp.c
++++ b/src/transparent_tcp.c
+@@ -157,149 +157,209 @@
+ int transparent_tcp_ip4_input(struct pbuf *packet, struct netif *input_netif)
+ {
+     if (!s_enabled)
+     {
+         return 0;
+     }
+     if (s_reinjecting)
+     {
+         return 0;
+     }
+-    if (input_netif != s_ap_netif || packet->tot_len < 20)
++    if (input_netif != s_ap_netif)
+     {
+         return 0;
+     }
++    if (packet->tot_len < 20)
++    {
++        pbuf_free(packet);
++        return 1;
++    }
+     uint8_t header[60];
+-    size_t  prefix_len = packet->tot_len >= 40 ? 40 : packet->tot_len;
+-    if (pbuf_copy_partial(packet, header, prefix_len, 0) != prefix_len)
++    if (pbuf_copy_partial(packet, header, 20, 0) != 20)
+     {
+-        return 0;
++        pbuf_free(packet);
++        return 1;
+     }
+     uint8_t ihl = (header[0] & 0x0f) * 4;
+     if ((header[0] >> 4) != 4 || ihl < 20 || packet->tot_len < ihl)
+     {
+-        return 0;
++        pbuf_free(packet);
++        return 1;
+     }
+-    if (ihl > prefix_len && pbuf_copy_partial(packet, header, ihl, 0) != ihl)
++    if (ihl > 20 && pbuf_copy_partial(packet, header + 20, ihl - 20, 20) != ihl - 20)
+     {
+-        return 0;
++        pbuf_free(packet);
++        return 1;
+     }
++    uint16_t ip_length = read_u16(header + 2);
++    if (ip_length < ihl || ip_length > packet->tot_len)
++    {
++        pbuf_free(packet);
++        return 1;
++    }
+     uint32_t client_ip, destination_ip;
+     memcpy(&client_ip, header + 12, sizeof(client_ip));
+     memcpy(&destination_ip, header + 16, sizeof(destination_ip));
+     uint32_t ap_ip = access_point_ipv4();
+     if (destination_ip == ap_ip)
+     {
+         return 0; /* Keep the portal, DNS, SOCKS listener, and router services local. */
+     }
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++    /* IPv4 fragments cannot be safely classified with a transport header. */
++    if (read_u16(header + 6) & 0x3fff)
++    {
++        pbuf_free(packet);
++        return 1;
++    }
++    /* Nothing other than client TCP, DHCP or local DNS is routed in v1. */
++    if (header[9] != 6 && header[9] != 17)
++    {
++        pbuf_free(packet);
++        return 1;
++    }
++#endif
+     if (header[9] == 17)
+     {
+         /* DHCP uses broadcast during lease acquisition/renewal, so keep it. */
+-        if (packet->tot_len < ihl + 8)
++        if (packet->tot_len < ihl + 8 || ip_length < ihl + 8)
+         {
+-            return 0;
++            pbuf_free(packet);
++            return 1;
+         }
+-        uint16_t source_port      = ((uint16_t)header[ihl] << 8) | header[ihl + 1];
+-        uint16_t destination_port = ((uint16_t)header[ihl + 2] << 8) | header[ihl + 3];
++        uint8_t udp_ports[4];
++        if (pbuf_copy_partial(packet, udp_ports, sizeof(udp_ports), ihl) != sizeof(udp_ports))
++        {
++            pbuf_free(packet);
++            return 1;
++        }
++        uint16_t source_port      = read_u16(udp_ports);
++        uint16_t destination_port = read_u16(udp_ports + 2);
+         if (source_port == 68 && destination_port == 67)
+         {
+             return 0;
+         }
+ #if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
+         /* AP-local DNS and DHCP were already allowed above. Block all other
+            Wi-Fi client UDP, including QUIC, before any XUDP flow is created. */
+         pbuf_free(packet);
+         return 1;
+ #endif
+         if (is_link_local_multicast_or_broadcast(destination_ip))
+         {
+             uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+             if (now - s_last_udp_discovery_log_ms >= 5000)
+             {
+                 s_last_udp_discovery_log_ms = now;
+                 TRAFFIC_LOG(TAG, "dropping local multicast/broadcast UDP before XUDP relay");
+             }
+             pbuf_free(packet);
+             return 1;
+         }
+         transparent_udp_flow_t flow;
+         if (!transparent_udp_create_or_get(client_ip, source_port, destination_ip, destination_port,
+                                            &flow))
+         {
+             ESP_LOGW(TAG, "UDP flow table full; dropping client datagram");
+             pbuf_free(packet);
+             return 1;
+         }
+         transparent_udp_touch(client_ip, source_port);
+         struct pbuf *rewritten_packet = pbuf_alloc(PBUF_RAW, packet->tot_len, PBUF_RAM);
+         if (!rewritten_packet || pbuf_copy(rewritten_packet, packet) != ERR_OK)
+         {
+             if (rewritten_packet)
+             {
+                 pbuf_free(rewritten_packet);
+             }
+             return 0;
+         }
+         if (!rewrite_packet(rewritten_packet, header, ihl, client_ip, source_port, ap_ip,
+                             TRANSPARENT_UDP_RELAY_PORT))
+         {
+             pbuf_free(rewritten_packet);
+             return 0;
+         }
+         s_reinjecting = true;
+         ip4_input(rewritten_packet, input_netif);
+         s_reinjecting = false;
+         pbuf_free(packet);
+         return 1;
+     }
+-    if (header[9] != 6 || packet->tot_len < ihl + 20)
++    if (header[9] != 6 || packet->tot_len < ihl + 20 || ip_length < ihl + 20)
+     {
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++        pbuf_free(packet);
++        return 1;
++#else
+         return 0;
++#endif
+     }
+-    uint16_t               client_port      = ((uint16_t)header[ihl] << 8) | header[ihl + 1];
+-    uint16_t               destination_port = ((uint16_t)header[ihl + 2] << 8) | header[ihl + 3];
+-    uint8_t                flags            = header[ihl + 13];
++    uint8_t tcp_header[20];
++    if (pbuf_copy_partial(packet, tcp_header, sizeof(tcp_header), ihl) != sizeof(tcp_header))
++    {
++        pbuf_free(packet);
++        return 1;
++    }
++    uint16_t               client_port      = read_u16(tcp_header);
++    uint16_t               destination_port = read_u16(tcp_header + 2);
++    uint8_t                flags            = tcp_header[13];
+     transparent_tcp_flow_t flow;
+     bool                   have_flow = transparent_tcp_get(client_ip, client_port, &flow);
+     if (!have_flow && (flags & 0x02) && !(flags & 0x10))
+     {
+         have_flow = transparent_tcp_create_or_get(client_ip, client_port, destination_ip,
+                                                   destination_port, &flow);
+         if (have_flow)
+         {
+             TRAFFIC_LOG(TAG, "redirecting client TCP %u -> remote port %u", client_port,
+                         destination_port);
+         }
+     }
+     if (!have_flow)
+     {
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++        pbuf_free(packet);
++        return 1;
++#else
+         return 0;
++#endif
+     }
+     transparent_tcp_touch(client_ip, client_port);
+     struct pbuf *rewritten_packet = pbuf_alloc(PBUF_RAW, packet->tot_len, PBUF_RAM);
+     if (!rewritten_packet || pbuf_copy(rewritten_packet, packet) != ERR_OK)
+     {
+         if (rewritten_packet)
+         {
+             pbuf_free(rewritten_packet);
+         }
+         ESP_LOGW(TAG, "could not allocate packet for transparent rewrite");
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++        pbuf_free(packet);
++        return 1;
++#else
+         return 0;
++#endif
+     }
+     if (!rewrite_packet(rewritten_packet, header, ihl, client_ip, client_port, ap_ip,
+                         TRANSPARENT_RELAY_PORT))
+     {
+         pbuf_free(rewritten_packet);
+         ESP_LOGW(TAG, "could not rewrite intercepted packet");
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++        pbuf_free(packet);
++        return 1;
++#else
+         return 0;
++#endif
+     }
+     /* The outer ip4_input already captured an IP-header pointer before this hook.
+        Reinject so the normal path reparses the rewritten tuple, then mark this
+        original invocation as consumed. */
+     s_reinjecting = true;
+     ip4_input(rewritten_packet, input_netif);
+     s_reinjecting = false;
+     pbuf_free(packet);
+     return 1;
+ }
+ 
+ 
