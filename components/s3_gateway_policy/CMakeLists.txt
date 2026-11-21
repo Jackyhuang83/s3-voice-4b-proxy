@@ -1,2 +1,6 @@
-# No Wi-Fi driver, NVS, lwIP hooks or proxy socket owner here.
-idf_component_register(SRCS "s3_gateway_policy.c" INCLUDE_DIRS ".")
+# Only a gateway AP, never Xiaozhi STA, can be captured by this hook.
+idf_component_register(
+  SRCS "s3_gateway_policy.c" "s3_gateway_ip4.c"
+  INCLUDE_DIRS "."
+  REQUIRES lwip s3_tcp_guard
+)

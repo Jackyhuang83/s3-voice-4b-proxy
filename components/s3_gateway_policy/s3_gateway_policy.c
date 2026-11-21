@@ -4,6 +4,9 @@
  */
 #include "s3_gateway_policy.h"
 
+static s3_gateway_policy_t device_policy = S3_GATEWAY_POLICY_INIT;
+s3_gateway_policy_t *s3_gateway_policy_device(void) { return &device_policy; }
+
 #define S3_F_STA    (1u << 0)
 #define S3_F_NODE   (1u << 1)
 #define S3_F_RELAY  (1u << 2)

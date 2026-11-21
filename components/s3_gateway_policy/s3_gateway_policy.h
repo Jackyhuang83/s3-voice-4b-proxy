@@ -38,6 +38,11 @@ typedef enum {
     S3_GW_PACKET_INTERCEPT = 3  /* external TCP through verified relay only */
 } s3_gateway_packet_action_t;
 
+/* Shared between voice station events and AP-only packet hook. */
+s3_gateway_policy_t *s3_gateway_policy_device(void);
+struct netif;
+void s3_gateway_lwip_bind_ap(struct netif *ap);
+void s3_gateway_lwip_unbind_ap(void);
 void s3_gateway_policy_init(s3_gateway_policy_t *policy);
 void s3_gateway_policy_event(s3_gateway_policy_t *policy, s3_gateway_event_t event);
 bool s3_gateway_policy_ready(const s3_gateway_policy_t *policy);
