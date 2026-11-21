@@ -8,7 +8,7 @@ Optional ESP-IDF/FreeRTOS **IPv4 transparent TCP proxy** gateway for the Wavesha
 
 ## Current status
 
-P0 research/documentation scaffold in progress. **No imported firmware source, ESP32 firmware build, VPS interoperability test or target 4B verification has been completed in this repo.** The CI workflow currently checks P0 documents only; its success must not be described as firmware success.
+P0–P3 **completed (13 merged PRs; protocol security regression and ESP32-S3 R8N16 build passing)**. P4 remains unaccepted: the existing router build is **not** a Waveshare 4B Xiaozhi voice firmware, the actual 4B has not been flashed/tested, and production-safe NVS encryption is not yet implemented. The planned P4-1 voice-first integration preflight and compile gate are documented in [P4 board integration](docs/P4-BOARD-INTEGRATION.md); it is not a deployable transparent gateway until the voice/AP runtime adapter and end-to-end build pass.
 
 ## Project baseline
 
