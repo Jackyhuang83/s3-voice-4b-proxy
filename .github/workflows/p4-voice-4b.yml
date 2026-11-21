@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Rebuilding the 4B image is expensive; obsolete PR commits cannot be
+# accepted as evidence for the current HEAD. Keep only the latest run.
+concurrency:
+  group: p4-4b-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   voice-4b-and-protocol-abi:
     name: Pin real 4B voice BSP, build with SS2022/VLESS protocol components
