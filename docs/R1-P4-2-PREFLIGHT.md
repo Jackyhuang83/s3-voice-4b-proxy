@@ -42,3 +42,12 @@
 - **R2 开发基线**：`r2/development`，P0-0 PR #19 仅合并到 R2；未来新架构所有 PR 不得面向 R1 或 main。
 - 当前按照原计划：**R1 P0=100%、P1=100%、P2=100%、P3=100%、P4=35%，整体 90.25%（报告四舍五入 90%）**。这代表合并历史阶段权重，不代表 4B 客户端可用；R1 P4-2 当前 NOT ACCEPTED。R2 P0=40%，P1-P4=0%，整体=4%。
 - **一票否决**：缺设备备份、未知恢复、明文/直连泄漏、音频/触控损坏、代理无法关闭、任务泄漏、证书跳验、资源耗尽，均禁止进入真实刷写/正式发布。
+
+## 六、官方恢复资料复核（2026-11-21）
+
+- **微雪原厂镜像确实存在**：官方 [4B Firmware Flashing](https://docs.waveshare.com/ESP32-S3-Touch-LCD-4B/Firmware-Flashing) 指向 `FirmWare/ESP32-S3-Touch-LCD-4B-FactoryXiaozhi_250807.bin`；厂商 [4B Resources](https://docs.waveshare.com/ESP32-S3-Touch-LCD-4B/Resources-And-Documents) 提供来源和下载工具。这只是**厂商原厂基线候选**，不证明与用户当前板上小智版本、MAC、NVS/OTA/asset 数据完全相同。还须核对 Flash、分区与 SHA，不可简单用原厂包覆盖用户定制状态。
+- **只读备份命令有官方来源**：Espressif [esptool ESP32-S3 Basic Commands](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/esptool/basic-commands.html) 支持 `read-flash`，并可用哈希核对导出文件；但命令是否在用户板的安全设置下可用尚需 read-only 查证，**不得把可读原始 SPI flash 假定为总是可恢复的明文**。
+- **双 OTA 不保证自动回退**：Espressif [OTA 参考](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/ota.html) 按 OTA image state 和 `otadata` 工作；没有 factory app、`otadata` 损坏或启动失败时应单独验证恢复路径。当前 4B 的厂商键控“factory 分区”方案不适用于已核实缺少 factory app 的 16m 布局。
+- **Flash Encryption/Secure Boot 必须先调查**：Espressif [Flash Encryption](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/security/flash-encryption.html) 提醒加密状态影响原始备份读取/恢复，错误写入明文可能导致设备不能启动。首次接入时只能读取安全状态、分区和原始 Flash，不能未经批准做 erase/写 eFuse/解锁安全模式。
+- **预检状态**：厂商镜像来源 SOURCE CONFIRMED；**用户设备原固件、原 NVS、当前 Flash Encryption/Secure Boot 配置、完整备份哈希与恢复演练均 NOT RUN**。以上条件达标前，一律禁止刷写，即使 GitHub 11/11 仍为绿色。
+
