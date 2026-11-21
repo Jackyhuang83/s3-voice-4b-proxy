@@ -86,6 +86,23 @@ not present in the pinned Xiaozhi checkout and are intentionally checked:
 References: [ESP-IDF lwIP API and limitations](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/lwip.html),
 [ESP32-S3 STA/AP official driver mode](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/overview.html).
 
+## P1 router core compatibility gate (isolated only)
+
+The same P4-1 PR now imports **only** `transparent_tcp.c/.h` from the
+original pinned yanxke TCP engine, **after** applying the existing P1 four
+patches with Git exact-context checks. The MIT license is copied with the
+component, and strict source guards reject unpatched source. The ESP-IDF 6.1
+Xiaozhi 4B CI compiles this core along with the existing SS2022/VLESS
+components. This detects cross-IDF C API drift while keeping one voice app,
+one existing WifiManager and the original OTA and resource partitions.
+
+**Deliberate safety limit:** the lwIP input hook is not enabled, the TCP
+relay server is not started, no AP forwarding configuration is modified,
+and no proxy credential is added. Successfully compiling this core does
+**NOT** demonstrate gateway functionality. Runtime wiring and a full
+fail-closed gateway lifecycle remain mandatory *within this same PR*
+before P4-1 is eligible to merge.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
