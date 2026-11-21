@@ -69,7 +69,7 @@ once('        s_has_upstream            = true;\n        s_boot_upstream_connect
 
 once('    s_sta_netif             = esp_netif_create_default_wifi_sta();\n',
      '    s_sta_netif             = esp_netif_create_default_wifi_sta();\n'
-     '    /* Never call esp_netif_create_ip6_linklocal(s_ap_netif). */\n')
+     '    /* AP IPv6 initialization deliberately omitted. */\n')
 
 once('    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,\n'
      '                                                        network_event, NULL, NULL));\n',
