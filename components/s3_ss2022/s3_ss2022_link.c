@@ -502,7 +502,14 @@ bool s3_ss2022_dns_query(const s3_ss2022_node_t *node, const char *resolver,
         if (out.have >= 2) {
             size_t expected = ((size_t)out.response[0] << 8) | out.response[1];
             if (expected >= 12 && out.have == expected + 2) {
-                memcpy(packet, out.response + 2, expected);
+                const uint8_t *answer = out.response + 2;
+                /* The encrypted proxy transports bytes, but the upstream
+                   DNS resolver is not intrinsically trusted. Bind every
+                   response to this exact query (RFC 1035 ID + QR) before
+                   exposing it to downstream AP clients. */
+                if (answer[0] != packet[0] || answer[1] != packet[1] ||
+                    !(answer[2] & 0x80)) break;
+                memcpy(packet, answer, expected);
                 *length = (int)expected;
                 session_close(&s);
                 return true;
