@@ -1,0 +1,256 @@
+name: P3-3 dual-protocol IPv4/IPv6 failure and release matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ipv6-uplink:
+    name: IPv4/IPv6 SS2022 & verified VLESS TLS, DNS binding, release gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install host SSL, PSA and pinned ESP-IDF builder
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libmbedtls-dev libssl-dev clang-format
+          python -m pip install --disable-pip-version-check \
+            platformio==6.1.18 blake3==1.0.8 cryptography==46.0.3
+
+      - name: Verify IPv6-only loopback and local AAAA/A fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import socket
+          s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+          s.bind(("::1", 0))
+          print("PASS runner IPv6 loopback address", s.getsockname())
+          s.close()
+          PY
+          printf '::1 vless.test wrong.test s3-dual.test\n127.0.0.1 s3-dual.test\n' \
+            | sudo tee -a /etc/hosts
+          python - <<'PY'
+          import socket
+          assert any(r[0] == socket.AF_INET6 for r in
+                     socket.getaddrinfo("vless.test", None, socket.AF_UNSPEC, socket.SOCK_STREAM))
+          families = {r[0] for r in socket.getaddrinfo(
+              "s3-dual.test", None, socket.AF_UNSPEC, socket.SOCK_STREAM)}
+          assert families == {socket.AF_INET6, socket.AF_INET}
+          print("PASS genuine getaddrinfo AAAA-only and A+AAAA fixture")
+          PY
+
+      - name: Compile and test SS2022 legacy/v2 NVS on actual production C
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_ss2022_vendor.py
+          SOURCES="components/s3_ss2022/muse_ss2022.c
+              components/s3_ss2022/s3_ss2022_link.c
+              components/s3_ss2022/third_party/blake3/blake3.c
+              components/s3_ss2022/third_party/blake3/blake3_dispatch.c
+              components/s3_ss2022/third_party/blake3/blake3_portable.c
+              tests/ss2022/link_host_stubs/nvs_fake.c"
+          COMMON="-std=gnu11 -O1 -g -fno-omit-frame-pointer
+            -fsanitize=address,undefined
+            -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2
+            -DBLAKE3_NO_AVX512 -DBLAKE3_USE_NEON=0
+            -Itests/ss2022/link_host_stubs -Icomponents/s3_ss2022"
+          gcc $COMMON $SOURCES tests/ipv6/test_node_v2.c \
+            -lmbedcrypto -o /tmp/s3_ipv6_node_test
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            /tmp/s3_ipv6_node_test
+          gcc $COMMON $SOURCES tests/ss2022/official_server_probe.c \
+            -lmbedcrypto -o /tmp/s3_ipv6_ss2022_probe
+          gcc $COMMON $SOURCES tests/ss2022/link_probe.c \
+            -lmbedcrypto -o /tmp/s3_p3_ss2022_link_probe
+
+      - name: Independently reject malformed authenticated SS2022 DNS on production C
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+          UBSAN_OPTIONS=halt_on_error=1 \
+          S3_LINK_PROBE=/tmp/s3_p3_ss2022_link_probe \
+            python tests/ss2022/test_link_integration.py
+
+      - name: Compile VLESS production C adapter and test IPv4+IPv6 TLS
+
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -Itests/vless_tls/host_stubs -Icomponents/s3_vless_tls \
+            components/s3_vless_tls/s3_vless_tls.c \
+            tests/vless_tls/host_esp_tls_openssl.c \
+            tests/vless_tls/vless_tls_probe.c \
+            -lssl -lcrypto -o /tmp/s3_vless_tls_probe
+          for family in 4 6; do
+            S3_VLESS_TEST_FAMILY="$family" \
+            S3_P3_EXTENDED_TLS=1 \
+            S3_VLESS_TLS_PROBE=/tmp/s3_vless_tls_probe \
+            ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            UBSAN_OPTIONS=halt_on_error=1 \
+              python tests/vless_tls/test_tls_interop.py
+          done
+
+      - name: Official pinned shadowsocks-rust on IPv6-only and IPv4 fallback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          IMAGE="ghcr.io/shadowsocks/ssserver-rust:v1.25.0@sha256:1816b2b09f3db929a688e48efb1333e4ee459ba158a951f9e73c3580628ab964"
+          CFG6="$RUNNER_TEMP/s3-ss2022-ipv6.json"
+          CFG4="$RUNNER_TEMP/s3-ss2022-ipv4.json"
+          cat > "$CFG6" <<'JSON'
+          {"server":"::1","server_port":18450,
+           "password":"AAECAwQFBgcICQoLDA0ODw==",
+           "method":"2022-blake3-aes-128-gcm","mode":"tcp_only","timeout":10}
+          JSON
+          cat > "$CFG4" <<'JSON'
+          {"server":"127.0.0.1","server_port":18449,
+           "password":"AAECAwQFBgcICQoLDA0ODw==",
+           "method":"2022-blake3-aes-128-gcm","mode":"tcp_only","timeout":10}
+          JSON
+          READY="$RUNNER_TEMP/s3-p3-target-ready"
+          ECHO_LOG="$RUNNER_TEMP/s3-p3-echo.log"
+          sudo -n python3 -u tests/ss2022/official_loopback_targets.py \
+            --ready "$READY" --echo-log "$ECHO_LOG" &
+          TARGET_PID=$!
+          cleanup() {
+            docker logs s3-p3-ss6 --tail 40 2>&1 || true
+            docker logs s3-p3-ss4 --tail 40 2>&1 || true
+            docker rm -f s3-p3-ss6 s3-p3-ss4 >/dev/null 2>&1 || true
+            sudo -n kill "$TARGET_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do test -s "$READY" && break; sleep 0.2; done
+          test -s "$READY"
+          docker pull "$IMAGE"
+          docker run --rm -d --name s3-p3-ss6 --network host \
+            -v "$CFG6:/etc/shadowsocks-rust/config.json:ro" "$IMAGE"
+          docker run --rm -d --name s3-p3-ss4 --network host \
+            -v "$CFG4:/etc/shadowsocks-rust/config.json:ro" "$IMAGE"
+          python - <<'PY'
+          import socket,time
+          for family,host,port in [
+              (socket.AF_INET6,"::1",18450),
+              (socket.AF_INET,"127.0.0.1",18449)]:
+              for _ in range(40):
+                  try:
+                      sock=socket.socket(family,socket.SOCK_STREAM)
+                      sock.settimeout(.5)
+                      sock.connect((host,port))
+                      sock.close()
+                      break
+                  except OSError:
+                      time.sleep(.25)
+              else: raise RuntimeError("official Rust proxy not listening")
+          print("PASS official Rust IPv6-only and IPv4 proxy listeners")
+          PY
+          export ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+          export UBSAN_OPTIONS=halt_on_error=1
+          export S3_SS2022_TEST_PROXY_HOST="::1"
+          /tmp/s3_ipv6_ss2022_probe tcp 18450
+          /tmp/s3_ipv6_ss2022_probe dns 18450
+          /tmp/s3_ipv6_ss2022_probe badkey 18450
+          /tmp/s3_ipv6_ss2022_probe bad-dns 18450
+          /tmp/s3_ipv6_ss2022_probe replay 18450
+          /tmp/s3_ipv6_ss2022_probe stale 18450
+
+          # A+AAAA example: IPv6 ::1:18449 deliberately has no server,
+          # so the ONLY allowed fallback is this SAME proxy's IPv4 A address.
+          export S3_SS2022_TEST_PROXY_HOST="s3-dual.test"
+          /tmp/s3_ipv6_ss2022_probe tcp 18449
+          /tmp/s3_ipv6_ss2022_probe dns 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 3
+          # Explicit IPv4 actual official server (not merely the fallback).
+          export S3_SS2022_TEST_PROXY_HOST="127.0.0.1"
+          /tmp/s3_ipv6_ss2022_probe tcp 18449
+          /tmp/s3_ipv6_ss2022_probe dns 18449
+          /tmp/s3_ipv6_ss2022_probe badkey 18449
+          /tmp/s3_ipv6_ss2022_probe bad-dns 18449
+          /tmp/s3_ipv6_ss2022_probe replay 18449
+          /tmp/s3_ipv6_ss2022_probe stale 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 5
+          docker stop -t 1 s3-p3-ss6
+          export S3_SS2022_TEST_PROXY_HOST="::1"
+          /tmp/s3_ipv6_ss2022_probe offline 18450
+          docker stop -t 1 s3-p3-ss4
+          export S3_SS2022_TEST_PROXY_HOST="127.0.0.1"
+          /tmp/s3_ipv6_ss2022_probe offline 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 5
+          echo "PASS official SS2022 IPv4+IPv6 TCP/DNS, stale/replay/badkey/offline and same-node fallback"
+
+      - name: Compile pinned P1/P2/P3-1/P3-2 plus P3-3 DNS fail-closed fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          for patch in \
+            patches/0001-tcp-only-drop-internet-udp.patch \
+            patches/0002-tcp-only-enforce-no-direct-route.patch \
+            patches/0003-validate-and-fail-closed-ipv4-input.patch \
+            patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C upstream apply --check "../$patch"
+            git -C upstream apply "../$patch"
+          done
+          mkdir -p upstream/components
+          cp -R components/s3_ss2022 upstream/components/s3_ss2022
+          cp -R components/s3_vless_tls upstream/components/s3_vless_tls
+          python tools/apply_p2_ss2022.py
+          python tools/apply_p3_vless_tls.py
+          python tools/apply_p3_sta_ipv6.py
+          python - <<'PY'
+          from pathlib import Path
+          cfg=Path("upstream/platformio.ini")
+          t=cfg.read_text()
+          needle="[env:esp32s3_r8n16]\n"
+          assert t.count(needle)==1
+          assert "ota_0,     app,  ota_0,   0x20000,  0x500000," in Path("upstream/partitions.csv").read_text()
+          assert "ota_1,     app,  ota_1,   0x520000, 0x500000," in Path("upstream/partitions.csv").read_text()
+          sdk = Path("upstream/sdkconfig.defaults.r8n16").read_text()
+          assert "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" in sdk
+          assert 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' in sdk
+          # The vendor's existing R8N16 layout has two 5MiB OTA app slots.
+          # PlatformIO must be explicitly told about that CSV; otherwise
+          # it recomputes a 1MiB check from its DEFAULT board manifest even
+          # when ESP-IDF itself already uses the correct sdkconfig partition.
+          # DO NOT replace this vendor CSV, remove OTA or touch flash hardware.
+          cfg.write_text(t.replace(needle,needle+
+              "build_flags = -DS3_PROXY_TCP_ONLY=1\n"+
+              "board_build.partitions = partitions.csv\n"+
+              "board_upload.maximum_size = 5242880\n",1))
+          PY
+          python tests/ipv6/test_source_ipv6.py
+          python tests/p3/test_exit_matrix.py
+          clang-format -i upstream/src/main.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.h
+          clang-format --dry-run --Werror --style=file upstream/src/main.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.h
+          python tests/ipv6/test_source_ipv6.py
+          python tests/p3/test_exit_matrix.py
+
+      - name: Build complete R8N16 firmware with dual-protocol DNS safeguards
+        working-directory: upstream
+        run: pio run -e esp32s3_r8n16
+
+      - name: Verification boundaries
+        run: |
+          echo "PASS = official SS2022 IPv4/IPv6, OpenSSL verified VLESS TLS, DNS ID+QR negative tests, R8N16 build."
+          echo "NOT RUN = external VPS, actual Wi-Fi Router Advertisement, client AP leaks, 4B voice/LCD, NVS encryption."
