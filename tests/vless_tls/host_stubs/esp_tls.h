@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
 #define ESP_OK 0
