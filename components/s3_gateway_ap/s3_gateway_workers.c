@@ -213,6 +213,7 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         __atomic_load_n(&authorized, __ATOMIC_ACQUIRE) ||
         !src || relay_fd < 0)
         return false;
+    bool ok = false;
     uint32_t expected = 0;
     if (!__atomic_compare_exchange_n(&configuration_in_progress, &expected,
                                      1u, false, __ATOMIC_ACQ_REL,
@@ -226,7 +227,6 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
     xSemaphoreGive(client_mutex);
     if (busy) goto release_configuration;
     uint32_t epoch = s3_gateway_session_epoch(s3_gateway_session_device());
-    bool ok = false;
     if (!epoch ||
         (s3_gateway_session_flags(s3_gateway_session_device()) &
          (S3_SESSION_STA | S3_SESSION_AP)) !=
