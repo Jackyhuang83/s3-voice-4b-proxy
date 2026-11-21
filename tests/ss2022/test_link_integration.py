@@ -59,17 +59,22 @@ def handle_server(sock, mode):
     port = int.from_bytes(variable[2 + host_len:4 + host_len], "big")
     pad_len = int.from_bytes(variable[4 + host_len:6 + host_len], "big")
     assert pad_len > 0 and len(variable) == 6 + host_len + pad_len
-    expected_host = "1.1.1.1" if mode == "dns" else "198.51.100.7"
-    assert (host, port) == (expected_host, 53 if mode == "dns" else 443)
+    is_dns = mode.startswith("dns")
+    expected_host = "1.1.1.1" if is_dns else "198.51.100.7"
+    assert (host, port) == (expected_host, 53 if is_dns else 443)
 
     size = int.from_bytes(decrypt(aes, 2, read_n(sock, 18)), "big")
     assert 1 <= size <= 2048
     client_data = decrypt(aes, 3, read_n(sock, size + 16))
-    if mode == "dns":
+    if is_dns:
         assert client_data[:2] == b"\x00\x0c"
         assert client_data[2:4] == b"\x12\x34"
         answer = bytearray(client_data[2:])
         answer[2:4] = b"\x81\x80"
+        if mode == "dns-wrong-id":
+            answer[1] ^= 0x01
+        if mode == "dns-no-qr":
+            answer[2] &= 0x7f
         reply = struct.pack("!H", len(answer)) + answer
     else:
         assert client_data == b"ping"
@@ -83,9 +88,14 @@ def handle_server(sock, mode):
         + encrypt(response_aes, 1, reply)
     )
     # Exercise partial socket reads and incremental authenticated framing.
-    for offset in range(0, len(data), 7):
-        sock.sendall(data[offset:offset + 7])
-        time.sleep(0.001)
+    if mode in ("dns-wrong-id", "dns-no-qr"):
+        # A complete authenticated but semantically wrong DNS response.
+        # Avoid a spurious server-side BrokenPipe when client rejects it.
+        sock.sendall(data)
+    else:
+        for offset in range(0, len(data), 7):
+            sock.sendall(data[offset:offset + 7])
+            time.sleep(0.001)
 
 
 def run(mode):
@@ -110,7 +120,8 @@ def run(mode):
 
     thread = threading.Thread(target=server)
     thread.start()
-    proc = subprocess.run([PROBE, mode, str(port)], text=True,
+    probe_mode = "dns-reject" if mode in ("dns-wrong-id", "dns-no-qr") else mode
+    proc = subprocess.run([PROBE, probe_mode, str(port)], text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
     thread.join(timeout=20)
     assert not thread.is_alive(), "mock server hung"
@@ -124,4 +135,6 @@ if __name__ == "__main__":
     subprocess.run([PROBE, "config"], check=True)
     run("relay")
     run("dns")
-    print("PASS SS2022 P2-2 host integration: NVS, AES-GCM TCP relay and DNS")
+    run("dns-wrong-id")
+    run("dns-no-qr")
+    print("PASS P3-3 SS2022 independent AES-GCM TCP/DNS and wrong-ID/QR rejection")
