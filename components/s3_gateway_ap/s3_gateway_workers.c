@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_netif.h"
+#include "esp_log.h"
 #include "s3_gateway_workers.h"
 #include "s3_gateway_runtime_guard.h"
 #include "s3_gateway_dns_udp.h"
@@ -45,6 +46,7 @@ static int active_clients[S3_GW_RELAYS] = {-1, -1};
 static owned_node_t node_storage;
 static volatile uint32_t configuration_in_progress;
 static volatile uint32_t revoke_requested;
+static volatile uint32_t admin_button_task_busy;
 static s3_gateway_runtime_guard_t node_lifetime;
 
 static bool is_stopping(void)
@@ -345,6 +347,39 @@ void s3_gateway_workers_revoke(void)
      * This notification path itself avoids blocking the Wi-Fi event loop.
      */
 }
+/* The pinned 4B has an unused IO-expander long-press gesture.
+ * The network probe must never block that existing key-monitor task.
+ */
+static void admin_button_task(void *arg)
+{
+    (void)arg;
+    bool ok = s3_gateway_workers_admin_arm_saved_ss2022();
+    ESP_LOGI("s3_gateway", "Physical gateway ARM: %s",
+             ok ? "enabled" : "not ready / no saved SS2022 node");
+    __atomic_store_n(&admin_button_task_busy, 0u, __ATOMIC_RELEASE);
+    vTaskDelete(NULL);
+}
+
+bool s3_gateway_workers_admin_button_toggle(void)
+{
+    if (is_authorized() ||
+        __atomic_load_n(&configuration_in_progress, __ATOMIC_ACQUIRE)) {
+        s3_gateway_workers_revoke();
+        return true;
+    }
+    if (!owner_ap || is_stopping()) return false;
+    uint32_t expected = 0;
+    if (!__atomic_compare_exchange_n(&admin_button_task_busy, &expected, 1u,
+                                     false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        return false;
+    if (xTaskCreate(admin_button_task, "s3_arm_button", 8192, NULL,
+                    S3_GW_TASK_PRIORITY, NULL) != pdPASS) {
+        __atomic_store_n(&admin_button_task_busy, 0u, __ATOMIC_RELEASE);
+        return false;
+    }
+    return true;
+}
+
 void s3_gateway_workers_request_stop(void)
 {
     __atomic_store_n(&stopping, 1u, __ATOMIC_RELEASE);
