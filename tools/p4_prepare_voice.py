@@ -122,7 +122,49 @@ def prepare(voice: Path, project: Path) -> None:
     require(before == after, "Recovery-critical voice files unexpectedly modified")
     require(all((voice / "components" / name / "CMakeLists.txt").is_file()
                 for name in COMPONENTS), "Proxy components were not copied")
+
+    # The upstream app currently erases the ENTIRE shared NVS on certain
+    # initialization errors. Replace ONLY that destructive recovery branch in
+    # the ephemeral build; healthy boot and original partition remain unchanged.
+    app_main = voice / "main/main.cc"
+    app_text = app_main.read_text()
+    old_nvs = (
+        '    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {\n'
+        '        ESP_LOGW(TAG, "Erasing NVS flash to fix corruption");\n'
+        '        ESP_ERROR_CHECK(nvs_flash_erase());\n'
+        '        ret = nvs_flash_init();\n'
+        '    }\n'
+    )
+    safe_nvs = (
+        '    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {\n'
+        '        ESP_LOGE(TAG, "NVS incompatible: refusing automatic erase and boot");\n'
+        '    }\n'
+    )
+    require(app_text.count(old_nvs) == 1, "NVS recovery implementation changed")
+    require("nvs_flash_erase()" in app_text, "Expected destructive upstream branch missing")
+    app_main.write_text(app_text.replace(old_nvs, safe_nvs, 1))
+    require("nvs_flash_erase()" not in app_main.read_text(),
+            "Unsafe automatic NVS erase remains")
+
+    # IDF 6 lwIP getaddrinfo(AF_UNSPEC) can be IPv4-only even with AAAA DNS.
+    # The official dual-stack adapter is needed for IPv6-only proxy hosts.
+    # Add to the 4B isolated target defaults; NEVER overwrite voice partitions,
+    # credentials, the original source repository or production firmware.
+    target_cfg = voice / "sdkconfig.defaults.esp32s3"
+    original_cfg = target_cfg.read_text()
+    for key in ("CONFIG_LWIP_IPV6=y",
+                "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
+                "CONFIG_LWIP_USE_ESP_GETADDRINFO=y"):
+        require(key.split("=")[0] + "=" not in original_cfg,
+                "Upstream already sets " + key.split("=")[0])
+    target_cfg.write_text(original_cfg.rstrip() +
+        "\n\n# P4-1 isolated 4B outbound IPv6 / official AF_UNSPEC fix\n" +
+        "\n".join(("CONFIG_LWIP_IPV6=y", "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
+                   "CONFIG_LWIP_USE_ESP_GETADDRINFO=y")) + "\n")
+
     print("P4_4B_SOURCE_PREFLIGHT_PASS board, voice drivers, exact SHA, pin and flash invariants")
+    print("P4_4B_NVS_ERASE_BLOCKED source guard; actual NVS migration NOT RUN")
+    print("P4_4B_DUAL_STACK_CONFIGURED IDF6 AF_UNSPEC adapter; real IPv6 NOT RUN")
     print("P4_4B_COMPONENT_LINK_PREPARED under pinned Xiaozhi IDF >=6.0.1")
     print("NOT RUN: forwarding, AP/STA IPv6, voice regression on device, NVS encryption, flashing")
 
