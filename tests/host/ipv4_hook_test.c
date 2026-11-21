@@ -11,6 +11,7 @@
 
 #include "lwip/ip4.h"
 #include "transparent_tcp.h"
+#include "lwip_router_hook.h"
 
 static struct netif g_ap;
 static struct netif g_other;
