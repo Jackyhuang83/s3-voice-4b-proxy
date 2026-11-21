@@ -130,14 +130,27 @@ static bool write_all(int fd, const uint8_t *data, size_t n)
 
 static int dial_local(int port)
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    /* Test probe only: exercise replay/time checks on the actual configured
+       IPv4 or IPv6 official server. Production client generates random salts. */
+    const char *host = getenv("S3_SS2022_TEST_PROXY_HOST");
+    bool v6 = host && strcmp(host, "::1") == 0;
+    int family = v6 ? AF_INET6 : AF_INET;
+    int fd = socket(family, SOCK_STREAM, 0);
     assert(fd >= 0);
     struct timeval tv = {.tv_sec = 3};
     assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
     assert(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0);
-    struct sockaddr_in addr = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port)};
-    assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
-    assert(connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+    if (v6) {
+        struct sockaddr_in6 addr = {.sin6_family = AF_INET6,
+                                    .sin6_port = htons((uint16_t)port)};
+        assert(inet_pton(AF_INET6, "::1", &addr.sin6_addr) == 1);
+        assert(connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+    } else {
+        struct sockaddr_in addr = {.sin_family = AF_INET,
+                                   .sin_port = htons((uint16_t)port)};
+        assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
+        assert(connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+    }
     return fd;
 }
 
