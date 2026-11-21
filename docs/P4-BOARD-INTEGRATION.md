@@ -1,6 +1,6 @@
 # P4-1 | Waveshare ESP32-S3-Touch-LCD-4B voice-first integration evidence
 
-Status: **OPEN / partial source integration; P4-1 acceptance NOT YET MET**. This is not a flashable release.
+Status: **P4-1 source + ESP-IDF 6.1 complete 4B build CI PASS; merge pending**. This is a compile-only integration baseline, **not a flashable/operational gateway release**. See `docs/P4-1-EXIT.md`.
 
 ## Pinned reuse and independent evidence (2026-11-21)
 
@@ -37,7 +37,7 @@ Status: **OPEN / partial source integration; P4-1 acceptance NOT YET MET**. This
 3. CI must build the real selected 4B Xiaozhi variant on IDF 6.1. Build binaries remain in CI workspace and **must not be published as flashable images**.
 4. If any source pin or partition invariant changes, fail early. Do not silently update to newer upstream source or change partitions merely to force a green compile.
 
-This is **not yet a functional gateway integration**. Linking SS2022 / VLESS library code alone does not connect to the existing lwIP IPv4 flow table, DNS service, STA IPv6 events or the device Wi-Fi AP. A complete P4-1 requires the voice-first runtime adapter plus a full integrated build and documented rollback preconditions. P4-1 remains **0% until its full PR is merged**.
+P4-1 **has** integrated the pinned board, single-owner Xiaozhi Wi-Fi prestart, lwIP AP-only hooks, encrypted transport libraries, bounded DNS/TCP entry-point components and full IDF6.1 build into one firmware. These interfaces are deliberately **not activated**. P4-2 implements authorization, task supervision, actual packet forwarding and hardware acceptance. P4-1 remains **0% until PR #14 is merged**, regardless of passing CI.
 
 ## Verified voice networking and credential lifecycle blockers
 
@@ -327,7 +327,7 @@ owners. No credentials or VPS endpoints are committed.
 **This is NOT a functional/authorized proxy gateway yet.** AP-local
 encrypted DNS listener, bounded TCP workers, manual admin arm, relay
 ready checks, recovery and real-device voice/network tests are still
-required before P4-1 approval. NVS encryption is planned for P4-3.
+required for P4-2 approval. NVS encryption is planned for P4-3.
 
 ### DHCP failure must not reboot-loop the voice device
 
@@ -347,14 +347,17 @@ An external destination with the same port numbers is dropped,
 even if a later image accidentally enables forwarding. The
 host C11 negative matrix includes these addresses.
 
-## Outstanding P4-1 implementation gates
+## P4-1 CI exit gates — completed at e395ecbe
 
-- [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
-- [ ] **Runtime design**: one-owner Wi-Fi STA/AP and netif lifetime; implement selected P1 IPv4 transparent TCP flow hook without overwriting Xiaozhi voice startup.
-- [ ] **Fail-closed routing**: do not let the Xiaozhi voice upstream request start a plaintext or direct bypass of a protected proxy flow. Clarify Xiaozhi server (voice) traffic vs AP client traffic.
-- [ ] **Compatibility**: preserve XiaoZhi UI/audio/OTA/asset partition and require a bounded PSRAM/task/stack budget, IDF 6.x-compatible intercept.
-- [ ] **Recovery**: documented read-only snapshot and independent stable firmware recovery proof before authorizing any hardware flash. No guessed factory-partition recovery.
-- [ ] **Build**: end-to-end single image full integration and source checks, not a demo with inactive C libraries.
+- [x] **Board**: exact Waveshare ESP32-S3 Touch LCD 4B with upstream voice/LCD/audio driver pins confirmed and source-pinned.
+- [x] **Voice-first integration**: exact pinned Xiaozhi + esp-wifi-connect single-owner STA/config event wiring; optional WPA2 APSTA configured before owner's Wi-Fi start and **disabled by default**.
+- [x] **Source safety**: zero destructive NVS erase branches in the isolated build; bounded DNS/error/fail-closed host matrix, AP-only IPv4/IPv6 Hook compiled; no plaintext/direct proxy fallback introduced by P4 overlay.
+- [x] **Partition/build**: complete ESP-IDF 6.1 4B merged image, app `0x2b0030` bytes vs original `0x3f0000` OTA slot (**32% free**); audio/LCD/8 MiB assets and original partitions remain pinned/unchanged; 11/11 workflow runs PASS on the **same code commit**.
+- [x] **Source rollback**: no user unit, original stable firmware, eFuse, NVS or VPS altered. Pinned code and fail-safe defaults documented.
+- [ ] **P4-2 RUN-TIME**: enable/stop supervised network workers, user authorization, AP TCP/DNS actual sockets, relay readiness, station loss and config-mode teardown, no-leak traces and complete 4B hardware voice/display checks.
+- [ ] **P4-3 RELEASE**: encrypted NVS, proof of stable binary backup and recovery, validated hardware flashing and public firmware release.
+
+**Note:** a compiled merged binary exists only transiently in CI and is not distributed as a usable image. Do not infer P4-2 network acceptance, OTA update safety or recovery readiness from these source/build checks.
 
 P4-2 later performs actual STA RA + public IPv6, AP client IPv4 TCP/DNS/no-leak traces, reboot, LCD/audio and load tests. P4-3 later implements NVS encryption and release-grade security and performance signoff.
 
