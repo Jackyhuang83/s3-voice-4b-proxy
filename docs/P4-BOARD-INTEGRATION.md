@@ -63,6 +63,29 @@ References:
 - https://github.com/78/xiaozhi-esp32/blob/831ffd14188553cc887408b75396ae38618538e0/main/main.cc
 - https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi.html
 
+## Follow-on source security patches (not hardware validation)
+
+The P4-1 CI assembly now makes **two exact-match, temporary source changes** that are
+not present in the pinned Xiaozhi checkout and are intentionally checked:
+
+1. The upstream app_main() can call `nvs_flash_erase()` on NVS_NO_FREE_PAGES or
+   NVS_NEW_VERSION_FOUND. The isolated integration build replaces only that
+   destructive recovery branch with an error log and a halted startup. This
+   **prevents automatic erasure** of old Wi-Fi credentials but is NOT yet a
+   migration / backup solution. The original upstream and user's device are
+   untouched.
+2. ESP-IDF 6 has a documented IPv4-only `getaddrinfo(AF_UNSPEC)` case. To
+   protect IPv6-only node dialing, the isolated build sets
+   `CONFIG_LWIP_IPV6=y`,
+   `CONFIG_LWIP_IPV6_AUTOCONFIG=y` and
+   `CONFIG_LWIP_USE_ESP_GETADDRINFO=y` in its ESP32-S3 target defaults. CI
+   checks the **resolved** sdkconfig, not just the presence of input text.
+   Source compilation is insufficient to prove real Wi-Fi IPv6 RA, DNS AAAA,
+   route selection, or ESP32-S3 network service operation.
+
+References: [ESP-IDF lwIP API and limitations](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/lwip.html),
+[ESP32-S3 STA/AP official driver mode](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/overview.html).
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
