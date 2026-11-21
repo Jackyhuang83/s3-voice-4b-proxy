@@ -179,7 +179,7 @@ def prepare(voice: Path, project: Path) -> None:
         wifi_src = wifi_src.replace(old, new, 1)
 
     swap_once('#include "wifi_board.h"\n',
-              '#include "wifi_board.h"\n#include "s3_gateway_policy.h"\n#include "s3_gateway_session.h"\n',
+              '#include "wifi_board.h"\n#include "s3_gateway_policy.h"\n#include "s3_gateway_session.h"\n#include "s3_gateway_workers.h"\n',
               "policy header")
     swap_once('static const char *TAG = "WifiBoard";\n',
               'static const char *TAG = "WifiBoard";\n'
@@ -197,10 +197,12 @@ def prepare(voice: Path, project: Path) -> None:
               '        case NetworkEvent::Disconnected:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_STA_DISCONNECTED);\n'
               '            s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_STA_LOST);\n'
+              '            s3_gateway_workers_revoke();\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeEnter:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_ENTER);\n'
               '            s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_CONFIG_ENTER);\n'
+              '            s3_gateway_workers_revoke();\n'
               '            break;\n'
               '        case NetworkEvent::WifiConfigModeExit:\n'
               '            s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_CONFIG_EXIT);\n'

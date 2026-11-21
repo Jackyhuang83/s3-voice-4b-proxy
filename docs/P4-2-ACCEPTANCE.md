@@ -24,6 +24,12 @@
 - 这不意味着运行时已验证 DNS 隔离；仍须后续同时观察 AP DHCP option 6 与小智 STA 正常域名解析/音频等行为，检查异常重连和默认 netif 切换。
 - 官方依据：https://docs.espressif.com/projects/esp-idf/en/release-v6.1/esp32s3/api-reference/network/esp_netif_programming.html ，https://github.com/espressif/esp-idf/blob/release/v6.1/components/esp_netif/Kconfig 。
 
+## R1-P4-2 运行时撤销增强（待 CI / 未实机）
+- 撤销 monitor 为第五个低优先级 FreeRTOS 任务，独立于可能被网络调用阻塞的 DNS 和 relay worker，每 20 ms 轮询失效状态并在互斥保护下 shutdown 当前 AP 客户端 socket；不主动关闭其他任务拥有的 fd，避免重用 fd 被误关。
+- 真实 Xiaozhi STA disconnect 和配网进入事件现在明确发送 revoke（修正早先缺失的事件接线），而不仅是更新 policy；每次重新授权都要求重新对节点加密探测。全部 worker 停止前 AP netif 继续保留，不能保证此前持有的上游 TLS fd 在断网时立即回收。
+- 修复 epoch 被撤销后 DNS 监听标志不会自动恢复的问题：管理员再次明确授权时，核对现存监听器并重新记录 DNS ready，而非允许旧任务重新授权。
+- 当前 API 仍需上层明确调用管理员 arm，尚缺最终安全的本地节点配置/按键 UI/实机资源记录。不能把“源码实现”和“可供用户直接操作”混淆。
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。

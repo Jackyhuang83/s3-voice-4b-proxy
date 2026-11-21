@@ -43,6 +43,7 @@ static SemaphoreHandle_t client_mutex;
 static int active_clients[S3_GW_RELAYS] = {-1, -1};
 static owned_node_t node_storage;
 static bool configuration_in_progress;
+static volatile uint32_t revoke_requested;
 
 static bool is_stopping(void)
 {
@@ -84,6 +85,25 @@ static bool client_event(int fd, bool entering, void *context)
     }
     xSemaphoreGive(client_mutex);
     return ok;
+}
+/* Dedicated revocation monitor: data plane stop is independent of DNS
+ * requests (which may block on upstream timeout). The monitor has no sockets
+ * of its own and only shuts down registered AP TCP client fds.
+ */
+static void worker_done(void);
+static void revoke_monitor(void *arg)
+{
+    (void)arg;
+    while (!is_stopping()) {
+        if (__atomic_load_n(&revoke_requested, __ATOMIC_ACQUIRE) ||
+            !is_authorized()) {
+            cancel_clients();
+            __atomic_store_n(&revoke_requested, 0u, __ATOMIC_RELEASE);
+        }
+        vTaskDelay(pdMS_TO_TICKS(20) ? pdMS_TO_TICKS(20) : 1);
+    }
+    cancel_clients();
+    worker_done();
 }
 static void worker_done(void)
 {
@@ -192,13 +212,26 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         __atomic_load_n(&authorized, __ATOMIC_ACQUIRE) ||
         !src || relay_fd < 0)
         return false;
+    if (!client_mutex || xSemaphoreTake(client_mutex, pdMS_TO_TICKS(100)) != pdTRUE)
+        return false;
+    bool busy = false;
+    for (unsigned i = 0; i < S3_GW_RELAYS; ++i)
+        if (active_clients[i] >= 0) busy = true;
+    xSemaphoreGive(client_mutex);
+    if (busy) return false;
     configuration_in_progress = true;
     uint32_t epoch = s3_gateway_session_epoch(s3_gateway_session_device());
     bool ok = false;
     if (!epoch ||
         (s3_gateway_session_flags(s3_gateway_session_device()) &
-         (S3_SESSION_STA | S3_SESSION_AP | S3_SESSION_DNS)) !=
-         (S3_SESSION_STA | S3_SESSION_AP | S3_SESSION_DNS))
+         (S3_SESSION_STA | S3_SESSION_AP)) !=
+         (S3_SESSION_STA | S3_SESSION_AP))
+        goto done;
+    /* A previous failure/administrator revocation advances the epoch and
+     * clears DNS/TCP listener flags, but the real sockets are still alive.
+     */
+    if (!s3_gateway_session_event(s3_gateway_session_device(),
+                                  S3_SESSION_DNS_LISTENER_READY))
         goto done;
     wipe(&node_storage, sizeof(node_storage));
     if (!copy_node(src, &node_storage)) goto done;
@@ -243,7 +276,8 @@ void s3_gateway_workers_revoke(void)
     (void)s3_gateway_session_event(s3_gateway_session_device(),
                                    S3_SESSION_ADMIN_OFF);
     transparent_tcp_set_enabled(false);
-    /* DNS worker polls cancellation in bounded socket timeout interval.
+    __atomic_store_n(&revoke_requested, 1u, __ATOMIC_RELEASE);
+    /* Monitor polls cancellation in bounded socket timeout interval.
      * This notification path itself avoids blocking the Wi-Fi event loop.
      */
 }
@@ -299,7 +333,8 @@ bool s3_gateway_workers_start_dns(esp_netif_t *ap)
     if (!spawn(udp_worker, "s3_dns_udp", S3_GW_DNS_STACK, NULL) ||
         !spawn(tcp_dns_worker, "s3_dns_tcp", S3_GW_DNS_STACK, NULL) ||
         !spawn(tcp_relay_worker, "s3_tcp_0", S3_GW_TCP_STACK, (void *)0) ||
-        !spawn(tcp_relay_worker, "s3_tcp_1", S3_GW_TCP_STACK, (void *)1))
+        !spawn(tcp_relay_worker, "s3_tcp_1", S3_GW_TCP_STACK, (void *)1) ||
+        !spawn(revoke_monitor, "s3_revoke", 3072, NULL))
         goto failed;
     (void)s3_gateway_session_event(s3_gateway_session_device(),
                                    S3_SESSION_DNS_LISTENER_READY);

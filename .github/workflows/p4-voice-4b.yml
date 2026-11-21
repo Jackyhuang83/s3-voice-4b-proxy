@@ -136,6 +136,8 @@ jobs:
           grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_SESSION_STA_LOST' voice/main/boards/common/wifi_board.cc
+          grep -q 's3_gateway_workers_revoke' voice/main/boards/common/wifi_board.cc
+          grep -q 'revoke_monitor' components/s3_gateway_ap/s3_gateway_workers.c
           ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
 
       - name: Import pinned, patched P1 IPv4 flow core for IDF6 ABI compile
