@@ -73,6 +73,15 @@ jobs:
           ! grep -E '(^|[^_])socket\(|SOCK_DGRAM|sendto\(' \
             components/s3_gateway_dns/s3_gateway_dns_processor.c
 
+      - name: Host WPA2 AP input-validation guard
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -D_POSIX_C_SOURCE=200809L -Icomponents/s3_gateway_ap \
+            components/s3_gateway_ap/s3_gateway_ap_config.c \
+            tests/p4/test_ap_credentials.c -o /tmp/p4_ap_check
+          /tmp/p4_ap_check
+
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
           set -euo pipefail
@@ -143,6 +152,7 @@ jobs:
           grep -q "s3_gateway_ip6.c" build/compile_commands.json
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
           grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
+          grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json

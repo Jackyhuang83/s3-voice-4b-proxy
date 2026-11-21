@@ -239,6 +239,27 @@ broadcasting an unconfigured hotspot. The follow-on integration must
 configure the AP before `esp_wifi_start()` using the existing
 single-owner station startup path and explicit authorization.
 
+## Official WPA2 + DHCP DNS prerequisite (not activated)
+
+A small `s3_gateway_ap` component now validates WPA2 AP SSID and PSK
+lengths (at least 12 password characters, at most 63) and refuses
+empty, oversized or control-character-bearing credentials; no
+password appears in the public repo. Host C11 edge-case tests are in
+CI. Another function uses the official ESP-IDF 6.1
+`esp_netif_dhcps_option` + `esp_netif_set_dns_info` APIs to send
+**only the already-created `WIFI_AP_DEF` interface's own IPv4** as
+DHCP option 6. The caller must start the local encrypted-DNS-backed
+listener first. Passing the STA interface or an unconfigured AP fails.
+On DHCP configuration failure, the helper does not advertise a
+potential plaintext fallback.
+
+This is a reusable prerequisite, **not the final APSTA lifecycle**:
+it never calls `esp_wifi_init`, `esp_wifi_set_mode`, or
+`esp_wifi_start`; the original Wi-Fi manager retains ownership.
+An authenticated, secure AP must be configured before driver startup,
+with an explicit user-authorized enable path, relay and teardown.
+Do not interpret source compilation as a working hotspot.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
