@@ -1,5 +1,7 @@
 # R2-P1-1 NOAIC 透明 TCP 核心原样移植
 
+> **历史文档 / 已撤回选型（2026-11-21 R2-P0-0）**：此前“NOAIC 唯一/首选数据平面”的正式选型结论已失效；本文件保留为旧版源码/CI 记录，不得作为后续移植指令或产品成熟度证据。最新唯一有效路线参见 [R2-PLAN](R2-PLAN.md)，重新审计见 [R2-P0-0-MATURITY-AUDIT](R2-P0-0-MATURITY-AUDIT.md)。历史测试结果不被删除，亦不计入新的验收进度。
+
 范围严格符合 R2-PLAN：**原样移植作者已经验证的 IPv4 TCP flow、packet rewrite、AP client owner 三组源码；不开发新算法、不启用 AP、不刷机**。
 
 ## 原始出处与字节一致性
