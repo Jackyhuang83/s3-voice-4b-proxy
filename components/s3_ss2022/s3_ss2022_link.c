@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdio.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <sys/select.h>
 #include "esp_heap_caps.h"
@@ -24,7 +26,8 @@
 
 #define S3_SS2022_MAGIC UINT32_C(0x53333232)
 #define S3_SS2022_NAMESPACE "s3ss2022"
-#define S3_SS2022_KEY "node"
+#define S3_SS2022_KEY "node_v2"
+#define S3_SS2022_LEGACY_KEY "node"
 #define S3_SS2022_IO_SIZE 2048
 #define S3_SS2022_WIRE_SIZE (S3_SS2022_IO_SIZE + 1200)
 #define S3_SS2022_MAX_RELAY 2
@@ -60,12 +63,39 @@ void s3_ss2022_node_wipe(s3_ss2022_node_t *node)
     if (node) wipe(node, sizeof(*node));
 }
 
+typedef struct {
+    uint32_t magic;
+    char server_ipv4[16];
+    uint16_t server_port;
+    uint8_t psk[16];
+} s3_ss2022_node_v1_t;
+
+/* Verify the server endpoint before DNS and before saving secrets. Client
+   destinations are never passed to getaddrinfo() for the proxy transport. */
+static bool valid_node_host(const char *host)
+{
+    if (!host) return false;
+    size_t n = strnlen(host, 254);
+    if (!n || n > 253) return false;
+    struct in6_addr v6;
+    struct in_addr v4;
+    if (inet_pton(AF_INET6, host, &v6) == 1 ||
+        inet_pton(AF_INET, host, &v4) == 1) return true;
+    if (n < 4 || !strchr(host, '.')) return false;
+    for (size_t i = 0; i < n; ++i) {
+        char c = host[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '.')) return false;
+        if (c == '.' && (i == 0 || i == n - 1 || host[i - 1] == '.')) return false;
+    }
+    return true;
+}
+
 bool s3_ss2022_node_valid(const s3_ss2022_node_t *node)
 {
     if (!node || node->magic != S3_SS2022_MAGIC || !node->server_port ||
-        !memchr(node->server_ipv4, '\0', sizeof(node->server_ipv4))) return false;
-    struct in_addr addr;
-    if (inet_pton(AF_INET, node->server_ipv4, &addr) != 1) return false;
+        !memchr(node->server_host, '\0', sizeof(node->server_host)) ||
+        !valid_node_host(node->server_host)) return false;
     uint8_t sum = 0;
     for (size_t i = 0; i < sizeof(node->psk); ++i) sum |= node->psk[i];
     return sum != 0;
@@ -79,6 +109,27 @@ bool s3_ss2022_node_load(s3_ss2022_node_t *out)
     if (nvs_open(S3_SS2022_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return false;
     size_t size = sizeof(*out);
     esp_err_t err = nvs_get_blob(handle, S3_SS2022_KEY, out, &size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        /* Old P2 serial config is a v1 IPv4-only blob. Preserve it as an
+           in-memory v2 object without writing or erasing credentials. */
+        s3_ss2022_node_v1_t old = {0};
+        size = sizeof(old);
+        err = nvs_get_blob(handle, S3_SS2022_LEGACY_KEY, &old, &size);
+        if (err == ESP_OK && size == sizeof(old) &&
+            old.magic == S3_SS2022_MAGIC &&
+            memchr(old.server_ipv4, '\0', sizeof(old.server_ipv4))) {
+            struct in_addr ipv4;
+            if (inet_pton(AF_INET, old.server_ipv4, &ipv4) == 1) {
+                out->magic = old.magic;
+                out->server_port = old.server_port;
+                memcpy(out->server_host, old.server_ipv4,
+                       strnlen(old.server_ipv4, sizeof(old.server_ipv4)) + 1);
+                memcpy(out->psk, old.psk, sizeof(old.psk));
+                size = sizeof(*out);
+            }
+        }
+        wipe(&old, sizeof(old));
+    }
     nvs_close(handle);
     if (err != ESP_OK || size != sizeof(*out) || !s3_ss2022_node_valid(out)) {
         s3_ss2022_node_wipe(out);
@@ -87,12 +138,12 @@ bool s3_ss2022_node_load(s3_ss2022_node_t *out)
     return true;
 }
 
-bool s3_ss2022_node_store(const char *ip, uint16_t port, const char *key_b64)
+bool s3_ss2022_node_store(const char *host, uint16_t port, const char *key_b64)
 {
-    if (!ip || !key_b64 || !port || strlen(ip) >= sizeof(((s3_ss2022_node_t *)0)->server_ipv4) ||
+    if (!host || !key_b64 || !port || !valid_node_host(host) ||
         strlen(key_b64) != 24) return false;
     s3_ss2022_node_t node = {.magic = S3_SS2022_MAGIC, .server_port = port};
-    memcpy(node.server_ipv4, ip, strlen(ip) + 1);
+    memcpy(node.server_host, host, strlen(host) + 1);
     size_t n = 0;
     bool valid = mbedtls_base64_decode(node.psk, sizeof(node.psk), &n,
                                        (const unsigned char *)key_b64, strlen(key_b64)) == 0 &&
@@ -104,7 +155,11 @@ bool s3_ss2022_node_store(const char *ip, uint16_t port, const char *key_b64)
     nvs_handle_t handle;
     bool ok = false;
     if (nvs_open(S3_SS2022_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
-        ok = nvs_set_blob(handle, S3_SS2022_KEY, &node, sizeof(node)) == ESP_OK &&
+        esp_err_t w = nvs_set_blob(handle, S3_SS2022_KEY, &node, sizeof(node));
+        esp_err_t old = ESP_OK;
+        if (w == ESP_OK) old = nvs_erase_key(handle, S3_SS2022_LEGACY_KEY);
+        ok = w == ESP_OK &&
+             (old == ESP_OK || old == ESP_ERR_NVS_NOT_FOUND) &&
              nvs_commit(handle) == ESP_OK;
         nvs_close(handle);
     }
@@ -116,8 +171,10 @@ bool s3_ss2022_node_clear(void)
 {
     nvs_handle_t handle;
     if (nvs_open(S3_SS2022_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return false;
-    esp_err_t err = nvs_erase_key(handle, S3_SS2022_KEY);
-    bool ok = (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND) &&
+    esp_err_t modern = nvs_erase_key(handle, S3_SS2022_KEY);
+    esp_err_t legacy = nvs_erase_key(handle, S3_SS2022_LEGACY_KEY);
+    bool ok = (modern == ESP_OK || modern == ESP_ERR_NVS_NOT_FOUND) &&
+              (legacy == ESP_OK || legacy == ESP_ERR_NVS_NOT_FOUND) &&
               nvs_commit(handle) == ESP_OK;
     nvs_close(handle);
     return ok;
@@ -184,37 +241,63 @@ static bool send_all(int fd, const uint8_t *data, size_t n)
     return true;
 }
 
+/* Preserve the proxy-only destination boundary. Resolve ONLY the trusted,
+   stored proxy server. Prefer IPv6 (AAAA), then IPv4 (A) if available.
+   A failed AAAA MUST NEVER open a direct connection to the client target. */
 static int connect_node(const s3_ss2022_node_t *node)
 {
-    struct sockaddr_in addr = {.sin_family = AF_INET,
-                               .sin_port = htons(node->server_port)};
-    if (inet_pton(AF_INET, node->server_ipv4, &addr.sin_addr) != 1) return -1;
-    int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd < 0) return -1;
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) goto error;
-    int ret = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (ret != 0 && errno != EINPROGRESS) goto error;
-    if (ret != 0) {
-        fd_set writable;
-        FD_ZERO(&writable);
-        FD_SET(fd, &writable);
-        struct timeval tv = {.tv_sec = 8};
-        ret = select(fd + 1, NULL, &writable, NULL, &tv);
-        int error = 0;
-        socklen_t len = sizeof(error);
-        if (ret <= 0 || getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) != 0 || error)
-            goto error;
+    char service[6];
+    snprintf(service, sizeof(service), "%u", (unsigned)node->server_port);
+    struct addrinfo hints = {.ai_family = AF_UNSPEC,
+                             .ai_socktype = SOCK_STREAM,
+                             .ai_protocol = IPPROTO_TCP};
+    struct addrinfo *addresses = NULL;
+    if (getaddrinfo(node->server_host, service, &hints, &addresses) != 0)
+        return -1;
+    int result = -1;
+    for (int preferred = AF_INET6; preferred == AF_INET6 || preferred == AF_INET;
+         preferred = preferred == AF_INET6 ? AF_INET : 0) {
+        for (const struct addrinfo *addr = addresses; addr; addr = addr->ai_next) {
+            if (addr->ai_family != preferred) continue;
+            int fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+            if (fd < 0) continue;
+            int flags = fcntl(fd, F_GETFL, 0);
+            if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) {
+                close(fd);
+                continue;
+            }
+            int ret = connect(fd, addr->ai_addr, addr->ai_addrlen);
+            if (ret != 0 && errno != EINPROGRESS) {
+                close(fd);
+                continue;
+            }
+            if (ret != 0) {
+                fd_set writable;
+                FD_ZERO(&writable);
+                FD_SET(fd, &writable);
+                struct timeval tv = {.tv_sec = 8};
+                ret = select(fd + 1, NULL, &writable, NULL, &tv);
+                int error = 0;
+                socklen_t len = sizeof(error);
+                if (ret <= 0 || getsockopt(fd, SOL_SOCKET, SO_ERROR,
+                                           &error, &len) != 0 || error) {
+                    close(fd);
+                    continue;
+                }
+            }
+            struct timeval tv = {.tv_sec = 5};
+            if (fcntl(fd, F_SETFL, flags) == 0 &&
+                setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0 &&
+                setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0) {
+                result = fd;
+                break;
+            }
+            close(fd);
+        }
+        if (result >= 0) break;
     }
-    if (fcntl(fd, F_SETFL, flags) != 0) goto error;
-    struct timeval tv = {.tv_sec = 5};
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0 ||
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0)
-        goto error;
-    return fd;
-error:
-    close(fd);
-    return -1;
+    freeaddrinfo(addresses);
+    return result;
 }
 
 static void session_close(s3_ss2022_session_t *s)
