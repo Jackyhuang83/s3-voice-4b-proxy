@@ -79,7 +79,8 @@ jobs:
           assert 'S3_PROXY_TCP_ONLY' in b and 'mode == TRANSPARENT_MODE_UPSTREAM' in b
           assert 'Direct routing is disabled' in b
           dns = m.split('static void captive_dns_task(void *arg)', 1)[1].split('static void reset_transparent_transport_state(', 1)[0]
-          assert 'DNS SERVFAIL' in dns and 'packet[3] = 0x82;' in dns
+          assert 'if (!s_configuration_mode)' in dns, 'Setup captive DNS must remain available'
+          assert 'packet[2] = 0x81;' in dns and 'packet[3] = 0x82;' in dns
           assert dns.index('packet[3] = 0x82;') < dns.index('int qend = 12;')
           print('Static source policy ordering passed (not packet-level hardware proof).')
           PY
