@@ -18,6 +18,7 @@
 #include "transparent_tcp.h"
 
 static esp_netif_t *active_ap;
+static bool ap_dns_ready;
 
 static void wipe_secret(void *v, size_t n)
 {
@@ -44,6 +45,7 @@ static bool read_credentials(char ssid[33], char psk[64])
 bool s3_gateway_ap_pre_start(void)
 {
     if (active_ap) return false;
+    ap_dns_ready = false;
     char ssid[33] = {0};
     char psk[64] = {0};
     if (!read_credentials(ssid, psk)) {
@@ -100,12 +102,21 @@ bool s3_gateway_ap_pre_start(void)
 bool s3_gateway_ap_after_start(void)
 {
     /* DHCP DNS always names AP itself, never the upstream STA resolver. */
-    return !active_ap || s3_gateway_ap_offer_local_dns(active_ap) == ESP_OK;
+    if (!active_ap) return true;
+    ap_dns_ready = s3_gateway_ap_offer_local_dns(active_ap) == ESP_OK;
+    return ap_dns_ready;
+}
+
+bool s3_gateway_ap_ready(void)
+{
+    /* Never authorize a future worker when AP-local DNS setup failed. */
+    return active_ap != NULL && ap_dns_ready;
 }
 
 void s3_gateway_ap_before_stop(void)
 {
     if (!active_ap) return;
+    ap_dns_ready = false;
     s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_ADMIN_DISARM);
     transparent_tcp_set_enabled(false);
     /* Keep AP packet filters until the original owner has stopped Wi-Fi. */

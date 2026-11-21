@@ -77,7 +77,8 @@ def main():
         '    }\n'
         '    ESP_ERROR_CHECK(esp_wifi_start());\n'
         '    if (!s3_gateway_ap_after_start()) {\n'
-        '        ESP_ERROR_CHECK(ESP_FAIL); /* DHCP failure: no service */\n'
+        '        /* Preserve voice STA; gateway is still fail-closed. */\n'
+        '        ESP_LOGE(TAG, "Gateway AP DHCP unavailable; proxy disabled");\n'
         '    }\n', 1)
     modified_sta = modified_sta.replace(sta_stop,
         '    s3_gateway_ap_before_stop();\n'

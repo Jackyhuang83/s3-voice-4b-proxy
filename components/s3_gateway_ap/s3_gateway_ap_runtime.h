@@ -6,5 +6,7 @@
 #include <stdbool.h>
 bool s3_gateway_ap_pre_start(void);
 bool s3_gateway_ap_after_start(void);
+/* True only after AP-bound DHCP offers safe local DNS. */
+bool s3_gateway_ap_ready(void);
 void s3_gateway_ap_before_stop(void);
 bool s3_gateway_ap_after_stop(void);

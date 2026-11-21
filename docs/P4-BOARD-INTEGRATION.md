@@ -329,6 +329,16 @@ encrypted DNS listener, bounded TCP workers, manual admin arm, relay
 ready checks, recovery and real-device voice/network tests are still
 required before P4-1 approval. NVS encryption is planned for P4-3.
 
+### DHCP failure must not reboot-loop the voice device
+
+If an explicitly enabled optional proxy AP cannot configure local DHCP
+DNS, `WifiStation` logs a failure and leaves the **original voice STA
+running**. The gateway remains unarmed and a new
+`s3_gateway_ap_ready()` predicate remains false. This is safer than
+calling `ESP_ERROR_CHECK(ESP_FAIL)` during optional AP setup, which
+could otherwise reset on every boot while an invalid NVS flag persists.
+A teardown failure still refuses to reuse a stale AP netif.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
