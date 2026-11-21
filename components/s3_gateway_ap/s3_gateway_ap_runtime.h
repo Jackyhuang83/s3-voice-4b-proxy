@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: MIT
+ * Called only inside the existing 78/esp-wifi-connect WifiStation owner.
+ * Never initializes, starts or stops a second Wi-Fi driver.
+ */
+#pragma once
+#include <stdbool.h>
+bool s3_gateway_ap_pre_start(void);
+bool s3_gateway_ap_after_start(void);
+void s3_gateway_ap_before_stop(void);
+bool s3_gateway_ap_after_stop(void);
