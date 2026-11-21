@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include "s3_gateway_vless_node.h"
@@ -272,9 +273,15 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
     /* Prefer Xiaozhi's own already-synchronized clock. Never initialize a
      * competing SNTP client unless the clock is still implausible.
      */
-    if (node_storage.cfg.transport == S3_GATEWAY_DNS_SS2022 &&
-        time(NULL) < (time_t)1700000000 &&
-        !s3_ss2022_start_clock()) goto done;
+    /* Use existing Xiaozhi time if valid. A fresh boot may require the
+     * official SNTP service before verified VLESS/TLS can handshake. */
+    if (time(NULL) < (time_t)1700000000) {
+        if (!s3_ss2022_start_clock()) goto done;
+        if (node_storage.cfg.transport == S3_GATEWAY_DNS_VLESS_TLS &&
+            (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK ||
+             time(NULL) < (time_t)1700000000))
+            goto done;
+    }
     if (!s3_gateway_dns_probe_node(&node_storage.cfg)) goto done;
     if (is_stopping() ||
         !s3_gateway_session_node_proven(s3_gateway_session_device(), epoch))
