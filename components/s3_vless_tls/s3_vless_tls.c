@@ -12,6 +12,7 @@
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
 #include "lwip/sockets.h"
 
 #define S3_VLESS_TLS_IO 2048
@@ -81,7 +82,9 @@ static bool open_conn(s3_vless_tls_conn_t *s, const char *host, uint16_t port)
 {
     memset(s, 0, sizeof(*s));
     s->socket_fd = -1;
-    if (!valid_dns_host(host) || !port || !reserve_slot()) return false;
+    /* Certificate validity dates are meaningless before initial clock sync. */
+    if (time(NULL) < (time_t)1700000000 || !valid_dns_host(host) ||
+        !port || !reserve_slot()) return false;
     s->slot = true;
     s->io = heap_caps_malloc(S3_VLESS_TLS_IO, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s->io) return false;
