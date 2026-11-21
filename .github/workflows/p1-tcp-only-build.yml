@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           git -C upstream apply --check ../patches/0001-tcp-only-drop-internet-udp.patch
           git -C upstream apply ../patches/0001-tcp-only-drop-internet-udp.patch
+          git -C upstream apply --check ../patches/0002-tcp-only-enforce-no-direct-route.patch
+          git -C upstream apply ../patches/0002-tcp-only-enforce-no-direct-route.patch
           python - <<'PY'
           from pathlib import Path
           cfg = Path('upstream/platformio.ini')
@@ -63,9 +65,15 @@ jobs:
           assert hook.index('source_port == 68 && destination_port == 67') < hook.index('#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY')
           assert hook.index('pbuf_free(packet);\n        return 1;\n#endif') < hook.index('transparent_udp_create_or_get(')
           assert 'build_flags = -DS3_PROXY_TCP_ONLY=1' in Path('upstream/platformio.ini').read_text()
+          m = Path('upstream/src/main.c').read_text()
+          a = m.split('static void refresh_transparent_interception_state(void)', 1)[1].split('static bandwidth_stats_t bandwidth_snapshot', 1)[0]
+          b = m.split('static void set_transparent_mode(transparent_mode_t mode)', 1)[1].split('static void enter_configuration_mode', 1)[0]
+          assert 'S3_PROXY_TCP_ONLY' in a and 'bool enabled = true;' in a
+          assert 'S3_PROXY_TCP_ONLY' in b and 'mode == TRANSPARENT_MODE_UPSTREAM' in b
+          assert 'Direct routing is disabled' in b
           print('Static source policy ordering passed (not packet-level hardware proof).')
           PY
-          clang-format --dry-run --Werror --style=file upstream/src/transparent_tcp.c
+          clang-format --dry-run --Werror --style=file upstream/src/transparent_tcp.c upstream/src/main.c
 
       - name: Compile modified upstream ESP32-S3 R8N16 firmware
         working-directory: upstream
