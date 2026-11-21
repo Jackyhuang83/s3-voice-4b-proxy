@@ -40,8 +40,7 @@ typedef struct {
 static esp_netif_t *owner_ap;
 static int udp_fd = -1, dns_fd = -1, relay_fd = -1;
 static volatile uint32_t stopping = 1, live_tasks, authorized;
-static bool initialized_once;
-static SemaphoreHandle_t client_mutex;
+ static SemaphoreHandle_t client_mutex;
 static int active_clients[S3_GW_RELAYS] = {-1, -1};
 static owned_node_t node_storage;
 static volatile uint32_t configuration_in_progress;
@@ -386,10 +385,9 @@ bool s3_gateway_workers_start_dns(esp_netif_t *ap)
         client_mutex = xSemaphoreCreateMutex();
         if (!client_mutex) return false;
     }
-    if (!initialized_once) {
-        s3_gateway_session_init(s3_gateway_session_device());
-        initialized_once = true;
-    }
+    /* Device epoch exists before the first Xiaozhi STA event.  AP restarts
+     * must never reset it or discard the station-connected state.
+     */
     if (!s3_gateway_session_event(s3_gateway_session_device(),
                                   S3_SESSION_AP_READY))
         return false;

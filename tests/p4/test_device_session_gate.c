@@ -11,6 +11,10 @@ int main(void) {
     s3_gateway_policy_t *p = s3_gateway_policy_device();
     s3_gateway_session_t *s = s3_gateway_session_device();
     s3_gateway_policy_init(p);
+    assert(s3_gateway_session_epoch(s) == 1);
+    /* The original voice STA callback can run before AP worker creation. */
+    assert(s3_gateway_session_event(s, S3_SESSION_STA_ONLINE));
+    assert((s3_gateway_session_flags(s) & S3_SESSION_STA) != 0);
     assert(!ready());
     s3_gateway_policy_event(p, S3_GW_STA_CONNECTED);
     s3_gateway_policy_event(p, S3_GW_NODE_VALIDATED);

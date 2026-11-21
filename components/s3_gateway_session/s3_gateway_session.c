@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 #include "s3_gateway_session.h"
 
-/* The real AP gate is born locked; only the supervised runtime may arm it. */
-static s3_gateway_session_t device_session;
+/* The real AP gate is born locked, epoch 1 at startup.  Wi-Fi STA
+ * Connected may occur BEFORE AP workers start; do not drop that event.
+ * The initialized word contains no permission flags, so never auto-arms.
+ */
+static s3_gateway_session_t device_session = { .word = (1u << 8) };
 s3_gateway_session_t *s3_gateway_session_device(void)
 {
     return &device_session;
