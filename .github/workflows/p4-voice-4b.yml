@@ -16,6 +16,9 @@ jobs:
     timeout-minutes: 70
     container:
       image: espressif/idf:release-v6.1
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - name: Check local assembly tool syntax and proxy provenance
