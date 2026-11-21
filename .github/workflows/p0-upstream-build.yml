@@ -52,12 +52,15 @@ jobs:
     env:
       IDF_COMMIT: fff9895c82d744c7237be8847347bdd1b07c6643
       NOAIC_SHA: 0be56938acace1d083be746b3f6c60886259e81e
-      IDF_TOOLS_PATH: ${{ runner.temp }}/r2-idf-tools
-      IDF_PATH: ${{ runner.temp }}/r2-idf-6-1
       IDF_PY_BUILD_JOBS: '4'
     steps:
       - name: Inspect our R2 control files
         uses: actions/checkout@v4
+      - name: Set temporary Espressif SDK paths at runner runtime
+        shell: bash
+        run: |
+          echo "IDF_PATH=$RUNNER_TEMP/r2-idf-6-1" >> "$GITHUB_ENV"
+          echo "IDF_TOOLS_PATH=$RUNNER_TEMP/r2-idf-tools" >> "$GITHUB_ENV"
       - name: Original upstream exact SHA and license, no modification
         shell: bash
         run: |
