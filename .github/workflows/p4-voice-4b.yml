@@ -223,6 +223,20 @@ jobs:
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"
           echo "NO firmware binary is published as a flashable release."
 
+      - name: Verify voice assets and original partitions were preserved
+        run: |
+          set -euo pipefail
+          git -C voice diff -- sdkconfig.defaults partitions/v2/16m.csv \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
+            CMakeLists.txt
+          python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
+          test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
+            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
+          test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
+          echo "PASS voice source and recovery-critical flash layout unchanged"
+
       - name: Prepare hash-labeled software-only test candidate
         working-directory: voice
         run: |
@@ -243,17 +257,3 @@ jobs:
             voice/build/P4-2-APP-SHA256.txt
           if-no-files-found: error
           retention-days: 7
-
-      - name: Verify voice assets and original partitions were preserved
-        run: |
-          set -euo pipefail
-          git -C voice diff -- sdkconfig.defaults partitions/v2/16m.csv \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
-            CMakeLists.txt
-          python tools/p4_prepare_voice.py --voice voice --project . --verify-assembled
-          test -z "$(git -C voice diff --name-only -- sdkconfig.defaults partitions/v2/16m.csv \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.h \
-            main/boards/waveshare/esp32-s3-touch-lcd-4b/config.json \
-          test "$(git -C voice rev-parse HEAD)" = 831ffd14188553cc887408b75396ae38618538e0
-          echo "PASS voice source and recovery-critical flash layout unchanged"
