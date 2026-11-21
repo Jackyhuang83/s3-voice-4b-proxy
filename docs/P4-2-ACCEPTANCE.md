@@ -12,6 +12,13 @@
 - 探测仅输出布尔结果供未来的监督器调用 s3_gateway_session_node_proven(epoch)；不直接授权、没有自动 AP 启动，也不能单独视为安全或实机验收。
 - 运行时启动/停止 FreeRTOS 任务、epoch 令牌对应的实际 worker 取消、真实 VPS 双协议以及硬件测试均 NOT RUN。
 
+## S2 DNS worker 集成（待最新 HEAD CI）
+已在原 4B 隔离构建源上接入 AP-only FreeRTOS UDP DNS/TCP DNS worker：
+- 只有显式 NVS AP 凭据有效、原 Wi-Fi owner 启动 APSTA、配置 DHCP DNS 以后，才启动两个低优先级 DNS 服务任务。默认不启动 AP；没有代理节点时仅返回本地 SERVFAIL，不会直连。
+- STA 和配网事件同时通知 P4-1 policy 与 P4-2 epoch 会话；重启 AP 不重新初始化 epoch；未提供管理员 ARM 入口。
+- AP stop 先撤销 epoch 和工作任务，再限时等待退出后释放 AP netif。若超时则保留隔离的 AP netif，不再主动触发故障崩溃；需要后续实机与模拟 stop 竞态检查。
+- **本项仅代表 DNS 运行任务基础接线，透明 TCP relay 工作任务、活动 socket 的有界取消、可信节点启停、资源预算和实际 4B 功能仍未验收。**
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。

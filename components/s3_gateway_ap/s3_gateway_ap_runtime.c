@@ -12,6 +12,8 @@
 #include "nvs.h"
 #include "lwip/netif.h"
 #include "s3_gateway_ap_runtime.h"
+#include "s3_gateway_workers.h"
+#include "s3_gateway_session.h"
 #include "s3_gateway_ap_config.h"
 #include "s3_gateway_ap_dns.h"
 #include "s3_gateway_policy.h"
@@ -103,7 +105,14 @@ bool s3_gateway_ap_after_start(void)
 {
     /* DHCP DNS always names AP itself, never the upstream STA resolver. */
     if (!active_ap) return true;
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    if (esp_wifi_get_mode(&mode) != ESP_OK || mode != WIFI_MODE_APSTA) {
+        ap_dns_ready = false;  /* A retained stale netif is never reopened. */
+        return false;
+    }
     ap_dns_ready = s3_gateway_ap_offer_local_dns(active_ap) == ESP_OK;
+    if (ap_dns_ready)
+        ap_dns_ready = s3_gateway_workers_start_dns(active_ap);
     return ap_dns_ready;
 }
 
@@ -117,6 +126,9 @@ void s3_gateway_ap_before_stop(void)
 {
     if (!active_ap) return;
     ap_dns_ready = false;
+    /* Revoke first, then signal DNS workers. Never destroy AP first. */
+    s3_gateway_session_event(s3_gateway_session_device(), S3_SESSION_AP_LOST);
+    s3_gateway_workers_request_stop();
     s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_ADMIN_DISARM);
     transparent_tcp_set_enabled(false);
     /* Keep AP packet filters until the original owner has stopped Wi-Fi. */
@@ -132,6 +144,10 @@ static esp_err_t restore_output(void *ctx)
 bool s3_gateway_ap_after_stop(void)
 {
     if (!active_ap) return true;
+    /* DNS workers must release all AP pointers before netif destruction.
+     * Failure retains a locked-off netif instead of causing use-after-free.
+     */
+    if (!s3_gateway_workers_drain(5000)) return false;
     /* The original owner has stopped Wi-Fi before this function. */
     if (esp_netif_tcpip_exec(restore_output, NULL) != ESP_OK) {
         /* Do not destroy a netif with output-hook pointers still referencing it. */
