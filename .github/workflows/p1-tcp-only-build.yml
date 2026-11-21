@@ -43,6 +43,10 @@ jobs:
           git -C upstream apply ../patches/0001-tcp-only-drop-internet-udp.patch
           git -C upstream apply --check ../patches/0002-tcp-only-enforce-no-direct-route.patch
           git -C upstream apply ../patches/0002-tcp-only-enforce-no-direct-route.patch
+          git -C upstream apply --check ../patches/0003-validate-and-fail-closed-ipv4-input.patch
+          git -C upstream apply ../patches/0003-validate-and-fail-closed-ipv4-input.patch
+          git -C upstream apply --check ../patches/0004-dns-servfail-on-tunnel-outage.patch
+          git -C upstream apply ../patches/0004-dns-servfail-on-tunnel-outage.patch
           python - <<'PY'
           from pathlib import Path
           cfg = Path('upstream/platformio.ini')
@@ -60,10 +64,13 @@ jobs:
           s = Path('upstream/src/transparent_tcp.c').read_text()
           hook = s.split('int transparent_tcp_ip4_input(', 1)[1].split('static err_t transparent_tcp_ap_output(', 1)[0]
           assert 'packet->tot_len < 20' in hook, 'minimum IPv4 header guard missing'
-          assert 'packet->tot_len >= 40 ? 40 : packet->tot_len' in hook
+          assert 'pbuf_copy_partial(packet, header, 20, 0)' in hook
+          assert 'pbuf_copy_partial(packet, header + 20, ihl - 20, 20)' in hook
+          assert 'tcp_header[13]' in hook
+          assert 'read_u16(header + 6) & 0x3fff' in hook
           assert hook.index('destination_ip == ap_ip') < hook.index('source_port == 68 && destination_port == 67')
-          assert hook.index('source_port == 68 && destination_port == 67') < hook.index('#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY')
-          assert hook.index('pbuf_free(packet);\n        return 1;\n#endif') < hook.index('transparent_udp_create_or_get(')
+          assert hook.index('source_port == 68 && destination_port == 67') < hook.index('/* AP-local DNS and DHCP were already allowed above.')
+          assert hook.index('/* AP-local DNS and DHCP were already allowed above.') < hook.index('transparent_udp_create_or_get(')
           assert 'build_flags = -DS3_PROXY_TCP_ONLY=1' in Path('upstream/platformio.ini').read_text()
           m = Path('upstream/src/main.c').read_text()
           a = m.split('static void refresh_transparent_interception_state(void)', 1)[1].split('static bandwidth_stats_t bandwidth_snapshot', 1)[0]
@@ -71,9 +78,26 @@ jobs:
           assert 'S3_PROXY_TCP_ONLY' in a and 'bool enabled = true;' in a
           assert 'S3_PROXY_TCP_ONLY' in b and 'mode == TRANSPARENT_MODE_UPSTREAM' in b
           assert 'Direct routing is disabled' in b
+          dns = m.split('static void captive_dns_task(void *arg)', 1)[1].split('static void reset_transparent_transport_state(', 1)[0]
+          assert 'if (!s_configuration_mode)' in dns, 'Setup captive DNS must remain available'
+          assert 'packet[2] = 0x81;' in dns and 'packet[3] = 0x82;' in dns
+          assert dns.index('packet[3] = 0x82;') < dns.index('int qend = 12;')
           print('Static source policy ordering passed (not packet-level hardware proof).')
           PY
           clang-format --dry-run --Werror --style=file upstream/src/transparent_tcp.c upstream/src/main.c
+
+      - name: Execute real C packet-hook regression under sanitizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -DS3_PROXY_TCP_ONLY=1 \
+            -Itests/host/stubs -Iupstream/src -Iupstream/include -include tests/host/stubs/compat.h \
+            upstream/src/transparent_tcp.c tests/host/ipv4_hook_test.c \
+            -o /tmp/s3_proxy_ipv4_hook_test
+          ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+            /tmp/s3_proxy_ipv4_hook_test
 
       - name: Compile modified upstream ESP32-S3 R8N16 firmware
         working-directory: upstream
@@ -81,5 +105,5 @@ jobs:
 
       - name: Verification scope
         run: |
-          echo 'Checked: patched upstream firmware compiles, and static UDP policy ordering.'
+          echo 'Checked: patched firmware build plus ASan/UBSan packet-hook host tests.'
           echo 'Not checked: actual AP/STA packets, TLS, SS2022, IPv6 or 4B voice/display.'
