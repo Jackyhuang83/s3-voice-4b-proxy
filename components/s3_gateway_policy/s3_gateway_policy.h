@@ -43,6 +43,7 @@ s3_gateway_policy_t *s3_gateway_policy_device(void);
 struct netif;
 void s3_gateway_lwip_bind_ap(struct netif *ap);
 void s3_gateway_lwip_unbind_ap(void);
+struct netif *s3_gateway_lwip_current_ap(void);
 void s3_gateway_policy_init(s3_gateway_policy_t *policy);
 void s3_gateway_policy_event(s3_gateway_policy_t *policy, s3_gateway_event_t event);
 bool s3_gateway_policy_ready(const s3_gateway_policy_t *policy);

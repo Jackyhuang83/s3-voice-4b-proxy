@@ -45,6 +45,48 @@ def main() -> None:
         require(expected in c_file, "P1 IPv4 flow guard absent: " + expected)
     require("TRANSPARENT_TCP_MAX_FLOWS" in h_file,
             "Unexpected upstream flow data structure")
+
+    # Keep the imported P1 TCP engine safe during AP restarts. Upstream's
+    # global defaults to ENABLED and its AP output hooks are one-way.
+    # This P4-only patch is exact-match and is never applied to P1/main.
+    initial = "static bool                   s_enabled = true;"
+    require(c_file.count(initial) == 1, "Router TCP initial state changed")
+    c_file = c_file.replace(initial,
+                            "static bool                   s_enabled = false;", 1)
+    anchor = "void transparent_tcp_init(void)\n{"
+    require(c_file.count(anchor) == 1, "Router TCP lifecycle moved")
+    uninstall = (
+        "/* P4-1: invoke on the lwIP core thread, after all relay workers stop. */\n"
+        "bool transparent_tcp_is_reinjecting(void)\n"
+        "{\n"
+        "    return s_reinjecting;\n"
+        "}\n\n"
+        "void transparent_tcp_uninstall_ap_output(void)\n"
+        "{\n"
+        "    s_enabled = false;\n"
+        "    if (s_ap_netif) {\n"
+        "        if (s_ap_original_output &&\n"
+        "            s_ap_netif->output == transparent_tcp_ap_output)\n"
+        "            s_ap_netif->output = s_ap_original_output;\n"
+        "        if (s_ap_original_linkoutput &&\n"
+        "            s_ap_netif->linkoutput == transparent_tcp_ap_linkoutput)\n"
+        "            s_ap_netif->linkoutput = s_ap_original_linkoutput;\n"
+        "    }\n"
+        "    s_ap_original_output = NULL;\n"
+        "    s_ap_original_linkoutput = NULL;\n"
+        "    s_ap_netif = NULL;\n"
+        "    s_reinjecting = false;\n"
+        "    transparent_tcp_init();\n"
+        "}\n\n"
+    )
+    c_file = c_file.replace(anchor, uninstall + anchor, 1)
+    header_anchor = "void transparent_tcp_install_ap_output(void);"
+    require(h_file.count(header_anchor) == 1, "Router TCP header changed")
+    h_file = h_file.replace(header_anchor,
+        header_anchor + "\n"
+        "/* P4-1 lifecycle: core-thread-only restore before AP teardown. */\n"
+        "void transparent_tcp_uninstall_ap_output(void);\n"
+        "bool transparent_tcp_is_reinjecting(void);", 1)
     require(not (voice / "components/s3_tcp_guard").exists(),
             "Refuse overwriting existing router integration component")
 

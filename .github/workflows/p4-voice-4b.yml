@@ -92,6 +92,7 @@ jobs:
           grep -q 'refusing automatic erase' voice/main/main.cc
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
+          grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' voice/sdkconfig.defaults.esp32s3
           grep -q 'S3_GW_CONFIG_ENTER' voice/main/boards/common/wifi_board.cc
           grep -q 'S3_GW_STA_DISCONNECTED' voice/main/boards/common/wifi_board.cc
           ! grep -q 'esp_wifi_init(' voice/main/boards/common/wifi_board.cc
@@ -113,6 +114,9 @@ jobs:
           python tools/p4_import_tcp.py --router router --voice voice
           test -s voice/components/s3_tcp_guard/LICENSE.router
           grep -q S3_PROXY_TCP_ONLY voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "s_enabled = false;" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "void transparent_tcp_uninstall_ap_output(void)" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "bool transparent_tcp_is_reinjecting(void)" voice/components/s3_tcp_guard/transparent_tcp.c
 
       - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
         working-directory: voice
@@ -124,6 +128,7 @@ jobs:
           test -s build/merged-binary.bin
           grep -q "s3_gateway_policy" build/compile_commands.json
           grep -q "s3_gateway_ip4.c" build/compile_commands.json
+          grep -q "s3_gateway_ip6.c" build/compile_commands.json
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
           grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
@@ -132,6 +137,7 @@ jobs:
           test -f build/partition_table/partition-table.bin
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
+          grep -qx 'CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y' sdkconfig
           grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
           echo "PASS Xiaozhi voice + SS2022/VLESS + P1 patched TCP core, IDF6 ABI compile"
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"

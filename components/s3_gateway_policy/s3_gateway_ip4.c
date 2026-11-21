@@ -20,6 +20,9 @@ void s3_gateway_lwip_bind_ap(struct netif *ap) {
 void s3_gateway_lwip_unbind_ap(void) {
     __atomic_store_n(&bound_ap, NULL, __ATOMIC_RELEASE);
 }
+struct netif *s3_gateway_lwip_current_ap(void) {
+    return __atomic_load_n(&bound_ap, __ATOMIC_ACQUIRE);
+}
 static int drop(struct pbuf *packet) {
     pbuf_free(packet);
     return 1;
@@ -27,6 +30,10 @@ static int drop(struct pbuf *packet) {
 int s3_gateway_ip4_input(struct pbuf *packet, struct netif *netif) {
     struct netif *ap = __atomic_load_n(&bound_ap, __ATOMIC_ACQUIRE);
     if (!ap || netif != ap) return 0; /* Never affect the voice STA. */
+    /* P1 reinjects the rewritten TCP segment with destination AP:15001.
+     * Suppress ONLY that internal recursion; arbitrary AP-local :15001
+     * packets still follow the drop policy. */
+    if (transparent_tcp_is_reinjecting()) return 0;
     if (!packet) return 1;
     if (packet->tot_len < 20) return drop(packet);
     uint8_t hdr[20];

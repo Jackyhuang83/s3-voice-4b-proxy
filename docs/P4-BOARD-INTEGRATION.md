@@ -188,6 +188,31 @@ Still pending: one-owner APSTA lifecycle, secure node/SSID provisioning,
 UDP/TCP DNS listeners, AP DHCP DNS option, packet capture leak checks,
 live encrypted DNS/VLESS handshake, and hardware voice/audio regression.
 
+## AP restart + IPv6 no-leak protection (source gate)
+
+The originally pinned router flow engine was not safe to transplant unchanged
+into a reusable Xiaozhi APSTA lifecycle: its static `s_enabled` starts
+true, its output callbacks remain installed after stopping AP, and it
+reinjects rewritten packets recursively through the project's IPv4 Hook.
+In the **isolated 4B build only**, source import now uses exact-match
+guards to make the P1 engine start disabled, add
+`transparent_tcp_uninstall_ap_output()` (restores saved AP output and
+linkoutput callbacks, nulls their old pointers, and clears bounded flow
+tables), and expose `transparent_tcp_is_reinjecting()` to allow only
+the internally rewritten TCP packet to traverse the project's AP-local
+filter. User's existing P1/P2/P3 source and stable 4B firmware are not
+modified. Uninstallation must run on the lwIP core task after active
+relay workers are stopped and **before** destroying the AP netif.
+
+Espressif 6.1 also provides an IPv6 packet input hook. The 4B build
+now selects `CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y` and compiles a
+per-interface filter: **all AP IPv6 is dropped**, including NDP and
+Router Advertisements, whereas STA traffic follows the official
+default rule (drop only when the interface has no link-local IPv6
+address). This preserves the user's outbound IPv6-only VPS feature
+instead of disabling IPv6 system-wide. This is source/build-only
+protection pending hardware APSTA and IPv6 packet-capture validation.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.

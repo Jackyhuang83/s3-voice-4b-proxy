@@ -30,7 +30,7 @@ PROTECTED = [
 COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
 # Exact permitted root-CMake append, never a partition or main-entry rewrite.
-ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n# The hook symbol lives in a static library ordered before lwIP. Force\n# archive extraction, equivalent to -u on GNU ld; never rely on link order.\ntarget_link_options(xiaozhi.elf PRIVATE \"-Wl,--undefined=s3_gateway_ip4_input\")\n"
+ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n# The hook symbol lives in a static library ordered before lwIP. Force\n# archive extraction, equivalent to -u on GNU ld; never rely on link order.\ntarget_link_options(xiaozhi.elf PRIVATE \"-Wl,--undefined=s3_gateway_ip4_input\" \"-Wl,--undefined=lwip_hook_ip6_input\")\n"
 
 
 def digest(path: Path) -> str:
@@ -155,13 +155,15 @@ def prepare(voice: Path, project: Path) -> None:
     original_cfg = target_cfg.read_text()
     for key in ("CONFIG_LWIP_IPV6=y",
                 "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
-                "CONFIG_LWIP_USE_ESP_GETADDRINFO=y"):
+                "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
+                "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y"):
         require(key.split("=")[0] + "=" not in original_cfg,
                 "Upstream already sets " + key.split("=")[0])
     target_cfg.write_text(original_cfg.rstrip() +
         "\n\n# P4-1 isolated 4B outbound IPv6 / official AF_UNSPEC fix\n" +
         "\n".join(("CONFIG_LWIP_IPV6=y", "CONFIG_LWIP_IPV6_AUTOCONFIG=y",
-                   "CONFIG_LWIP_USE_ESP_GETADDRINFO=y")) + "\n")
+                   "CONFIG_LWIP_USE_ESP_GETADDRINFO=y",
+                   "CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM=y")) + "\n")
 
     # Wire only the Xiaozhi-owned connection and provisioning lifecycle to
     # a locked-down policy. This does not call esp_wifi_init, create an AP,
