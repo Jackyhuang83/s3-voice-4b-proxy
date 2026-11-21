@@ -76,6 +76,7 @@ jobs:
             git -C upstream apply --check "../$patch"
             git -C upstream apply "../$patch"
           done
+          mkdir -p upstream/components
           cp -R components/s3_ss2022 upstream/components/
           python tools/apply_p2_ss2022.py
           python - <<'PY'
