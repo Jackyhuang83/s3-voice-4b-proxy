@@ -83,11 +83,20 @@ def vless_server(conn: ssl.SSLSocket, mode: str) -> None:
 
 def run_case(case: str, pem: str, key: str, unrelated_ca: str) -> None:
     env = os.environ.copy()
-    env["S3_VLESS_TEST_CONNECT_IP"] = "127.0.0.1"
+    ipv6 = os.environ.get("S3_VLESS_TEST_FAMILY") == "6"
+    if ipv6:
+        # No direct-IP override: force the host shim to resolve vless.test
+        # through the system resolver /etc/hosts AAAA fixture in CI.
+        env.pop("S3_VLESS_TEST_CONNECT_IP", None)
+    else:
+        env["S3_VLESS_TEST_CONNECT_IP"] = "127.0.0.1"
     env["S3_VLESS_TEST_CA"] = unrelated_ca if case == "bad-ca" else pem
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    with socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET,
+                       socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("127.0.0.1", 0))
+        if ipv6:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        sock.bind(("::1" if ipv6 else "127.0.0.1", 0))
         port = sock.getsockname()[1]
         should_accept = case not in ("offline", "numeric-host")
         errors: list[Exception] = []
@@ -99,7 +108,7 @@ def run_case(case: str, pem: str, key: str, unrelated_ca: str) -> None:
             def server():
                 try:
                     peer, addr = sock.accept()
-                    assert addr[0] == "127.0.0.1"
+                    assert addr[0] == ("::1" if ipv6 else "127.0.0.1")
                     with peer:
                         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                         ctx.load_cert_chain(certfile=pem, keyfile=key)
