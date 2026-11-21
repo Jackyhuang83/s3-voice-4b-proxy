@@ -115,7 +115,7 @@ def prepare(voice: Path, project: Path) -> None:
         CMAKE_NEEDLE +
         "# P4-1 isolated compile-only transport ABI gate.\n"
         "# There is deliberately NO packet hook, AP service or startup path.\n"
-        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls)\n"
+        "list(APPEND MAIN_PRIV_REQUIRES_EXTRA s3_ss2022 s3_vless_tls s3_tcp_guard)\n"
     )
     cmake_path.write_text(original.replace(CMAKE_NEEDLE, injected, 1))
     after = {name: digest(voice / name) for name in PROTECTED}
