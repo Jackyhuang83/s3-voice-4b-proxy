@@ -1,6 +1,6 @@
 # R2-P0-2｜两套原版网关构建和自动化回归复现
 
-**状态：CI 核对中，尚未选出最终移植底座。** 依照 R2-P0-1 的三项目标：优先直接移植、继承作者测试、保留小智并可恢复。此 PR 不写自定义路由器代码、不移植协议、不刷设备。
+**状态：原版两项目构建及测试已在 PR #17 head `5df0a05610cdd6297e0e456c6a9cd8a488f41134` SUCCESS；本次新增源级比较/选型文档需要完成最终同 HEAD CI 验收。** 依照 R2-P0-1 的三项目标：优先直接移植、继承作者测试、保留小智并可恢复。此 PR 不写自定义路由器代码、不移植协议、不刷设备。
 
 ## 精确来源与原版验证方法
 
@@ -26,4 +26,12 @@ P0-2 对两个候选按照 `docs/R2-PLAN.md` 的 100 分评分机制逐项附来
 4. **资源预算：**小智语音/LCD 要共享有限 internal RAM/PSRAM，禁止默认照搬 A 的 64 条会话与大缓冲；不经实测只采用较保守的并发上限，之后一次集中实测调优。
 5. **失败可退：**不重写小智 app_main/Wi-Fi owner/NVS 恢复，网关默认关闭，前置授权；退回原语音固件的安全路径在实机写入前核对。
 
-**完成定义：**原始源版本/许可证验证 + 双候选构建/原版测试状态分项可证实 + 具体移植文件清单及最少适配调用点 + 确定选择（附硬性阻断解释）。此文档当前是验收模板，不能冒充测试结果。
+## 原版验证实证（2026-11-21 GitHub Actions）
+原版双 Job 同一工作流：https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44902851046
+
+- **NOAIC Job 136842209402 PASS：**固定 `v26.10.16 / 0be56938...`，ESP-IDF `fff9895c...`，MIT 和 SHA 检查、作者自己 `prepare_lwip.py apply/check` PASS。原版 `idf.py build/size` PASS：固件 `0xf2ed0` bytes，作者独立 app 槽 `0x400000`（76% free），`idf.py size` image `994902` bytes。**原版 Python 125 tests / OK**，原版两项 Node 管理回归 PASS，Git `main` 和 `tests` 源码无修改。
+- **yanxke Job 136842209188 PASS：**固定 `dfb04b...`，PlatformIO `pio run -e esp32s3_r8n16` PASS（RAM 79888/327680，PIO Flash 874159/1048576）。该 PIO 使用的体积基准与 NOAIC 的 app 槽不同，**不能直接比较剩余百分比**。同一 HEAD 的 B 原版代码质量 gate PASS。
+- PR #17 上述确切 head 共 **11/11 GitHub 工作流 PASS**。这些仅证明原版构建及原版模拟测试，不代表两项目的 ESP32-S3 性能等同。
+- **NOT RUN：**4B 设备、原版小智/代理共存、SS2022/VLESS 加密数据面、STA IPv6-only VPS、真实 DNS 防泄漏/回退。
+
+**选型结果：**以 NOAIC 原样 TCP flow/packet/client 模块作为唯一数据平面源代码基线。其他不可直移的 SDK Hook、Wi-Fi owner、SOCKS5/加密协议边界和停止条件详见 [R2-P0-2-DECISION](R2-P0-2-DECISION.md)。本 PR 完整 CI 才是 P0-2 合并门槛。
