@@ -26,7 +26,7 @@
 | P2 | [#10 / P2-3](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/10) | 固定官方 shadowsocks-rust 服务端 IPv4 TCP/DNS 互通、错误密钥/时间戳/盐重放/中断 Fail-Closed 自动测试，P2 阶段总结 | 官方服务端端到端 TCP/53、认证和故障负向测试 + 修改后 R8N16 CI；真实公网 VPS 与 4B 实测另标 NOT RUN | 30% | MERGED (#10; 31fbb815) |
 | P3 | [#11 / P3-1](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/11) | 复用官方 ESP-TLS 认证标准 VLESS TCP/DNS，保留上游流表并禁止旧明文 VLESS、直接 UDP 旁路 | CA/SNI/SAN 证书验证、读写与负向安全测试、修改后 R8N16 固件构建；Reality 不属于本 PR | 40% | MERGED (#11; 43befc6c) |
 | P3 | [#12 / P3-2](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/12) | 上游 STA IPv6 SLAAC、SS2022 AF_INET6/AAAA 代理节点拨号与 v1→v2 凭证兼容、VLESS 验证 TLS 的 AAAA IPv6-only 拨号 | 官方 Rust IPv6-only TCP/DNS、真实 IPv6 TLS CA/SNI、同节点 A 回退 + R8N16 全构建；AP 实机 IPv6 防泄漏留 P4 | 35% | MERGED (#12; b19c0c7f) |
-| P3 | P3-3（最终计划 PR） | 官方 SS2022 IPv4/IPv6 TCP/DNS、错误密钥/重放/过期/离线；VLESS/TLS IPv4/IPv6 证书及过期证书；DNS 事务 ID/QR Fail-Closed 回归；P3 退出验收 | 同一 PR Head 的双协议双地址族真实协议测试、负向故障矩阵、R8N16 全构建及历史回归全部 PASS；真实公网与 4B 实机留 P4 | 25% | OPEN / CI pending |
+| P3 | [#13 / P3-3](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/13) | 官方 SS2022 IPv4/IPv6 TCP/DNS、错误密钥/重放/过期/离线；VLESS/TLS 双栈证书及过期证书；DNS 事务 ID/QR Fail-Closed 回归；P3 退出验收 | 同一 PR Head 的双协议双地址族真实协议测试、负向故障矩阵、R8N16 全构建及历史回归全部 PASS；公网及 4B 实机留 P4 | 25% | MERGED (#13; c7f30f01) |
 | P4 | P4-1 | 微雪 4B 对应板型与小智语音/LCD/Wi-Fi 驱动资源集成、无损回退方案 | 确认正确硬件版本和资源配置，不覆盖稳定镜像；完成集成构建 | 35% | PLANNED |
 | P4 | P4-2 | 4B 真机 Wi-Fi AP 客户端透明 TCP、IPv6-only VPS、DHCP/DNS、防泄漏、重启及长期运行验收 | 实机日志、问题清单、自动与现场验证分离；语音显示无回归 | 40% | PLANNED |
 | P4 | P4-3 | 安全与性能收尾、Recovery 操作、固件 release | 可复现构建、回滚文档、实机验收证据和发布检查表 | 25% | PLANNED |
@@ -46,16 +46,16 @@
 
 总进度 = Σ(阶段完成百分比 × 整体阶段权重)，四舍五入到整数百分比。避免在验收标准未变的情况下主观微调数字。
 
-### 当前快照（2026-11-21；P3-1 与 P3-2 已合并通过 CI，P3-3 与 P4 实机尚未验收）
+### 当前快照（2026-11-21；P0–P3 的 13 个 PR 全部合并，自动化门槛通过；P4 实机/发布安全尚未开始）
 
 | 阶段 | 完成率 | 计算依据 |
 |---|---:|---|
 | P0 | **100%** | #1/#2/#3 已合并：35+35+30 |
 | P1 | **100%** | #4/#5/#6/#7 已合并：15+30+25+30；仅代表 P1 源码与自动化门槛 |
 | P2 | **100%** | #8/#9/#10 已合并：SIP022 向量 + 官方 ssserver-rust 实际协议 TCP/DNS 互通、错误密钥/重放/旧时间戳/离线负向测试、修改后 R8N16 编译全部 PASS；真实公网 VPS 与 4B 实机 NOT RUN |
-| P3 | **75%** | #11/#12 已合并：VLESS/ESP-TLS 证书 CA/SNI、SS2022 IPv6-only 官方服务端 TCP/DNS、AAAA/A 回退、IPv4 NVS 兼容、IPv6-only VLESS TLS 与集成 R8N16 编译 PASS；实机 RA/AP 泄漏及公网 VPS NOT RUN |
+| P3 | **100%** | #11/#12/#13 已合并（40+35+25）：标准 VLESS/ESP-TLS、SS2022 双栈 Rust 服务端、错密钥/重放/时间戳/离线、IPv4/IPv6 证书异常与过期证书、双协议 DNS ID/QR 拒绝、完整 R8N16 构建及 10 项 CI PASS；真实公网/4B 实机 NOT RUN |
 | P4 | **0%** | 未开始 |
-| **整体** | **79%** | 100%×10% + 100%×25% + 100%×25% + 75%×25% = 78.75%，显示 79% |
+| **整体** | **85%** | 100%×10% + 100%×25% + 100%×25% + 100%×25% + 0%×15% = 85%；仅 PR 交付权重，不代表硬件产品可用 |
 
 这是一张 **PR/阶段交付管理进度表**，不代表设备现在可用。特别是 P4 的 0% 表示尚未完成任何 4B 真机验收。
 
