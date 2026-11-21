@@ -45,6 +45,8 @@ jobs:
           git -C upstream apply ../patches/0002-tcp-only-enforce-no-direct-route.patch
           git -C upstream apply --check ../patches/0003-validate-and-fail-closed-ipv4-input.patch
           git -C upstream apply ../patches/0003-validate-and-fail-closed-ipv4-input.patch
+          git -C upstream apply --check ../patches/0004-dns-servfail-on-tunnel-outage.patch
+          git -C upstream apply ../patches/0004-dns-servfail-on-tunnel-outage.patch
           python - <<'PY'
           from pathlib import Path
           cfg = Path('upstream/platformio.ini')
@@ -76,6 +78,9 @@ jobs:
           assert 'S3_PROXY_TCP_ONLY' in a and 'bool enabled = true;' in a
           assert 'S3_PROXY_TCP_ONLY' in b and 'mode == TRANSPARENT_MODE_UPSTREAM' in b
           assert 'Direct routing is disabled' in b
+          dns = m.split('static void captive_dns_task(void *arg)', 1)[1].split('static void reset_transparent_transport_state(', 1)[0]
+          assert 'DNS SERVFAIL' in dns and 'packet[3] = 0x82;' in dns
+          assert dns.index('packet[3] = 0x82;') < dns.index('int qend = 12;')
           print('Static source policy ordering passed (not packet-level hardware proof).')
           PY
           clang-format --dry-run --Werror --style=file upstream/src/transparent_tcp.c upstream/src/main.c
