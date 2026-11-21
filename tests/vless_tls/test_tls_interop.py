@@ -72,6 +72,13 @@ def vless_server(conn: ssl.SSLSocket, mode: str) -> None:
     for index in range(0, len(payload), 3):
         conn.sendall(payload[index:index + 3])
         time.sleep(0.003)
+    # Keep the TLS session open until the client closes, so a valid
+    # authenticated response is not raced by a server-side abrupt EOF.
+    conn.settimeout(3)
+    try:
+        conn.recv(1)
+    except (ssl.SSLError, TimeoutError, ConnectionError):
+        pass
 
 
 def run_case(case: str, pem: str, key: str, unrelated_ca: str) -> None:
