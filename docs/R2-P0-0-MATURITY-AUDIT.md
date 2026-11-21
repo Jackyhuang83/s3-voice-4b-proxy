@@ -64,3 +64,34 @@
 - **CI：本 PR 尚待 GitHub Actions；P0-0 尚未合并；真实 4B 设备、DNS/IPv6、双协议 Fail-Closed：NOT RUN**。
 - **P0/P1/P2/P3/P4 均 0%；整体 0%（重置后的新验收口径）**。从旧 PR 中复用测试成果，不重新重复已通过的无关工作；若需检查其有效性，仅重新确认固定 SHA 与兼容性。
 - 明确禁止新建仓库、删除历史 PR、强推 main、独立初始化第二套 Wi-Fi、自动修改用户 VPS/实机固件及绕过 TLS 证书验证。
+
+## 6. 第二轮：固定来源和可移植边界证据（2026-11-21）
+
+本轮检查不再把 Stars 排名作为替代源码的证据；对长期维护的官方组件，也逐项注明**可沿用和不能直接沿用的调用链**。来源 SHA 是进一步 P0-1 选定冻结版本的调查快照，而不是声称这些版本已经与 XiaoZhi 固件兼容。
+
+| 候选/代码快照 | 已确认的可直接借鉴部分 | 决定性阻断与定位 | 本阶段判定 |
+|---|---|---|---|
+| `espressif/esp-idf@fff9895c82d744c7237be8847347bdd1b07c6643` 与 esp-lwip `c6f2f878e7b0f86033214b85547d579be43351e3` | `esp_netif` DHCP、BSD sockets、IPv6、`esp_tls`；官方文档含 `protocols/sockets/non_blocking`、`tcp_transport_client` 和 `protocols/dns_over_https` 示例 | 官方 [ip4.c](https://github.com/espressif/esp-lwip/blob/c6f2f878e7b0f86033214b85547d579be43351e3/src/core/ipv4/ip4.c) 中 `LWIP_HOOK_IP4_INPUT(p,inp)` 位于 IPv4 头长度及 checksum 验证**之前**；按这个接口只能消费/放行传入的 `pbuf *`，不能返回新的 `pbuf *` 给 `ip4_input`。没有等价的透明 TCP 完整实现。 | **成熟官方基本库，优先复用**；还需单独处理透明重定向的 hook/packet ownership |
+| `espressif/esp-iot-bridge@5b848ef836bcf5c07e17143989f0eb16a0dee003` | 官方 [wifi_router](https://github.com/espressif/esp-iot-bridge/blob/5b848ef836bcf5c07e17143989f0eb16a0dee003/examples/wifi_router/README.md)、Apache-2.0 [组件许可证](https://github.com/espressif/esp-iot-bridge/blob/5b848ef836bcf5c07e17143989f0eb16a0dee003/components/iot_bridge/license.txt)；[User_Guide](https://github.com/espressif/esp-iot-bridge/blob/5b848ef836bcf5c07e17143989f0eb16a0dee003/components/iot_bridge/User_Guide.md) 支持 ESP32-S3 与 IDF6.1 | [patches.list](https://github.com/espressif/esp-iot-bridge/blob/5b848ef836bcf5c07e17143989f0eb16a0dee003/components/iot_bridge/patches/patches.list) 实际含 `dhcp.patch` / `dhcpserver.patch` / `ip4_napt.patch` / `lwip_napt.patch`，作用于 NAT/DHCP，**不是** NOAIC 所需的 `ip4.c` 校验后 TCP pbuf 替换点；`bridge_wifi.c::esp_bridge_wifi_init()` 自行 `esp_wifi_init`/`start`，违反小智唯一 Wi-Fi owner。且 `esp_bridge_wifi_set*()` 使用 `%s` 打印 SSID/密码，整份移植会引入不必要的日志泄露风险。 | **官方参考，不整套移植**；最小所有权适配必须在 P0-1 先核对 |
+| `martin-ger/esp32_nat_router@96e6ce483e6f95567860a6d146976f76f1c38ad3` | 成熟维护的 [netif_hooks.c](https://github.com/martin-ger/esp32_nat_router/blob/96e6ce483e6f95567860a6d146976f76f1c38ad3/main/netif_hooks.c) 展示 AP/STA `netif->input/linkoutput` hook、拦截 ACL、故障监控的行为；可用作独立设计审查参照 | 通过 `esp_netif_get_netif_impl()` 取得内部 netif，并修改原有 function pointers；并非公共安全透明代理 API。全项目是 NAT + 可选 WireGuard；[Issue #267](https://github.com/martin-ger/esp32_nat_router/issues/267) 仍请求 SOCKS5/HTTP 透明出口。GitHub repo license=null、根目录无统一 LICENSE，`main/netif_hooks.c` 与 `components/acl/acl.c` 未发现明确 SPDX/授权头（仅抽查），逐文件许可未获证实。 | **长期运行实践参考，暂不复制源码**；先许可澄清，再判定可复用片段 |
+| `shadowsocks/shadowsocks-rust`（长期主线） | 成熟、持续维护的 SIP022 / `aead-cipher-2022`，官方协议端到端行为与跨平台服务端、错误路径 | 基于 Rust/大量桌面 OS 运行时，不是现成 ESP-IDF6.1/FreeRTOS 客户端；移植编译和资源成本未证实 | **SS2022 对照实现 / 标准互通测试 oracle**，不要搬整套 runtime |
+| `shadowsocks/shadowsocks-c@50f1ae54f737aa66f8edba05bdbf7250ff7f8a60` | 2012 起的 C 代码历史，CI/跨平台互通与部分 SIP022 行为可参考；项目文档记录 2026 年从 libev 迁移 libuv | 当前 README 依赖 libuv；`docs/modernization.md` 还记录 **C++20 核心迁移**，不能笼统说为 ESP32-S3 可直接移植的纯 C 协议库；`LICENSE` 为 GPL-3.0，直接并入本项目有重大许可证评估/合规成本；README 的透明重定向依赖 Linux iptables | **协议测试/实现参考，不作为直接移植候选** |
+| `espressif/esp-protocols` + `78/esp-wifi-connect` | 前者为乐鑫长期维护的 `net_connect`、`sock_utils` 等官方组件；后者为小智原有 STA/配网 owner（2024-09 起维护） | 前者的 `net_connect` 是独立连接管理范式而非透明网关；后者必须继续保留唯一 Wi-Fi owner，禁止另加路由器 `app_main` 或第二次 Wi-Fi 初始化 | **优先审查其函数级复用**，列入 P0-1 源码矩阵 |
+
+### 6.1 必须解决的两项新增风险
+
+1. **ESP-IDF DNS 配置是全局的，不按 AP/STA 分离。** 固定 IDF 源码 [lwip.rst](https://github.com/espressif/esp-idf/blob/fff9895c82d744c7237be8847347bdd1b07c6643/docs/en/api-guides/lwip.rst) 明确提醒在多网卡下 DHCP 获取 DNS 可能改写全局 DNS。P0-1/P3 应设计隔离的下游 DNS 应答与加密出口验证，而不能凭 DHCP AP DNS 设置就宣称防泄漏。
+2. **Fail-Closed 与 Hook 不是同一个问题。** 上述成熟 NAT 项目默认可以从 AP 经 STA direct；禁用代理或 Hook 仍可能直接上网。P0-1 必须证明存在靠得住的独立 deny/禁止 IP_FORWARD/NAPT 的配置策略（仅允许 DHCP、必要受保护 DNS 本地入口），并设计故障负向测试；在证明前禁止开启 AP 路由。
+
+### 6.2 成熟度与可复用性的两张分开的成绩单
+
+- **成熟且直接可复用**：官方 esp-netif / ESP-IDF BSD sockets / esp_tls / FreeRTOS 与原小智 esp-wifi-connect owner；其具体 4B 组合仍需 P0-1/P0-2 CI。
+- **成熟但仅可参考**：Espressif ESP-IoT-Bridge 的完整 router、martin-ger NAT Router、shadowsocks-rust 的 SIP022 行为、shadowsocks-c 的跨平台测试。没有一个已证实可整套满足 AP transparent SS2022/VLESS。
+- **较新且已做原版 CI**：NOAIC、yanxke，保留测试/源文件，但不能充当“成熟产品实测”的替代品。
+- **明确待定**：局部重定向 Hook 的最终安全抽象、公开许可允许直接复制的网关代码、加密传输与固定 4B 内存预算的组合证据。**这些保留给 P0-1/P0-2，不得在 P0-0 伪造 PASS。**
+
+## 7. P0-0 关闭判定
+
+P0-0 的目标是客观筛选、识别缺口与冻结下一步调查路径，**不是在本 PR 确立永久主实现**。本轮已有：成熟/实验候选分级；多个独立官方源码的函数/补丁/许可证风险定位；阶段与 PR 全路线；历史主选型撤回。只在最新 HEAD 的 GitHub CI 全绿且审计文档一致后，才可合并并计 P0 内 40%（项目 4%）。
+
+下一 PR **P0-1** 要继续深入至接口级：精确复用列表、输入输出 Hook 可行性、真正的 Fail-Closed/服务隔离、SS2022/VLESS 的 transport + DNS 合约及被证实的资源预算，不以高 Stars 替代这些验收。无法找到相应成熟组件时应 STOP，记录风险并重新评估路线，而不偷用实验代码。
