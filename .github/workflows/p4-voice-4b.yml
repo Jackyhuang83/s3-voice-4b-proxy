@@ -82,6 +82,17 @@ jobs:
             tests/p4/test_ap_credentials.c -o /tmp/p4_ap_check
           /tmp/p4_ap_check
 
+      - name: P4-2 epoch-fenced supervisor negative matrix (no device)
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_session \
+            components/s3_gateway_session/s3_gateway_session.c \
+            tests/p4/test_gateway_session.c -o /tmp/p4_gateway_session
+          /tmp/p4_gateway_session
+          ! grep -E 'esp_wifi_init|esp_wifi_set_mode|nvs_flash_erase|socket\\(' \
+            components/s3_gateway_session/s3_gateway_session.c
+
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
           set -euo pipefail
@@ -159,6 +170,7 @@ jobs:
           grep -q "s3_gateway_tcp_server.c" build/compile_commands.json
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
+          grep -q "s3_gateway_session.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
