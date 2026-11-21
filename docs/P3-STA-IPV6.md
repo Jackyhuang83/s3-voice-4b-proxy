@@ -34,4 +34,11 @@
 
 ## Validation status
 
-**PENDING** until PR Actions host tests and firmware compilation pass and the PR merges. No real device flashed.
+**PASS / MERGED（源码/主机真实 IPv6 协议互通/ESP32-S3 固件构建）**
+
+- [PR #12](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/12) 已 Squash Merge；主分支提交 `b19c0c7f10e41da2891be7e733c1959b1259b7e1`。
+- [P3-2 成功 CI Run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44883600141)：`success`。本 PR Head 的 **9 项 Actions 全部 success**（P0/P1/P2/P3-1 回归以及 P3-2）。
+- IPv6-only Rust SS2022 `[::1]` TCP/DNS/错误密钥/离线拒绝；同节点双栈 AAAA 失败后的 IPv4 A 回退；VLESS IPv6-only + 证书 SNI/SAN 验证及错误证书负向测试；NVS v1→v2 兼容：**PASS**。
+- 完整 R8N16 ESP-IDF/PlatformIO 固件（P1/P2/P3-1/P3-2 统一集成）**PASS**。首次构建因 PlatformIO 板卡默认 1 MiB 程序上限失败；最终在 CI 中显式选择官方现成 `partitions.csv`，对照双 5 MiB OTA/16 MiB Flash 元数据后通过，未改动上游分区表或刷写硬件。
+- **P3 进度 75%（#11 40% + #12 35%），项目 79%**，按照 GDGS 已 MERGED 权重统计。
+- **NOT RUN**：实际 Wi-Fi STA Router Advertisement、默认路由与 IPv6 可达性、真实公网 VPS、4B AP IPv6 泄漏抓包、LCD/语音、长期稳定性、加密 NVS 与生产部署安全。上述项目不可由回环 CI 推导。
