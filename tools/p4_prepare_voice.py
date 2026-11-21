@@ -30,7 +30,7 @@ PROTECTED = [
 COMPONENTS = ("s3_ss2022", "s3_vless_tls", "s3_gateway_policy", "s3_gateway_dns")
 CMAKE_NEEDLE = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
 # Exact permitted root-CMake append, never a partition or main-entry rewrite.
-ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n"
+ROOT_HOOK_CMAKE = "\n# P4-1 official IDF6.1 lwIP hook; original project() must already exist.\n# Root CMake runs in normal configure, unlike component script discovery.\nidf_component_get_property(s3_lwip lwip COMPONENT_LIB)\ntarget_compile_options(${s3_lwip} PRIVATE \"-I${PROJECT_DIR}/components/s3_gateway_policy\")\ntarget_compile_definitions(${s3_lwip} PRIVATE \"-DESP_IDF_LWIP_HOOK_FILENAME=\\\"s3_gateway_lwip_hook.h\\\"\")\n# The hook symbol lives in a static library ordered before lwIP. Force\n# archive extraction, equivalent to -u on GNU ld; never rely on link order.\ntarget_link_options(xiaozhi.elf PRIVATE \"-Wl,--undefined=s3_gateway_ip4_input\")\n"
 
 
 def digest(path: Path) -> str:
