@@ -126,6 +126,31 @@ This prevents premature exposure while the single-owner APSTA service
 and encrypted relay wiring are developed in this same PR. Host tests
 validate the policy, but no on-device isolation or forwarding has passed.
 
+## Official ESP-IDF AP-only lwIP hook (build gate pending)
+
+The isolated voice-first build now contains a real
+`ESP_IDF_LWIP_HOOK_FILENAME` IPv4 input hook. It always returns
+`0` without inspecting traffic if no gateway AP netif is explicitly bound:
+Xiaozhi voice/OTA traffic on STA is unchanged. If an authorized AP is
+eventually bound, malformed or fragmented IPv4, UDP/QUIC, ICMP, other
+AP-local services and unauthorized external TCP are consumed and dropped.
+Only AP-local DHCP/DNS traffic is passed to lwIP; authorized TCP goes
+through P1's patched, bounded transparent TCP engine, never direct.
+
+The global cold-off policy is shared between the original Xiaozhi
+`WifiBoard::OnNetworkEvent` callbacks and this hook. The ESP-IDF CMake
+change is limited to an *isolated CI checkout* and follows the official
+component-level hook mechanism. CI must prove the lwIP compile command
+actually contains the hook definition, not just that the header exists.
+
+**Safety boundary:** nobody calls `s3_gateway_lwip_bind_ap` yet.
+No AP is started, DNS listener/relay are not started, P1 AP output tuple
+rewrite is not installed, and IPv6 AP suppression is not yet verified.
+This is not functional Wi-Fi forwarding. There is deliberately no
+device flashing, public release or modification to an existing voice unit.
+
+Official reference: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/lwip.html
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
