@@ -1,0 +1,119 @@
+name: P2-3 SS2022 official server interoperability and fail-closed
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ss2022-official:
+    name: Official shadowsocks-rust server TCP/DNS, replay and failures
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host cryptography build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libmbedtls-dev
+
+      - name: Verify unchanged rlog core and licenses
+        run: python3 tools/check_ss2022_vendor.py
+
+      - name: Compile actual C SS2022 client and failure probe with sanitizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512 -DBLAKE3_USE_NEON=0 \
+            -Itests/ss2022/link_host_stubs -Icomponents/s3_ss2022 \
+            components/s3_ss2022/muse_ss2022.c \
+            components/s3_ss2022/s3_ss2022_link.c \
+            components/s3_ss2022/third_party/blake3/blake3.c \
+            components/s3_ss2022/third_party/blake3/blake3_dispatch.c \
+            components/s3_ss2022/third_party/blake3/blake3_portable.c \
+            tests/ss2022/link_host_stubs/nvs_fake.c \
+            tests/ss2022/official_server_probe.c -lmbedcrypto \
+            -o /tmp/s3_ss2022_official_probe
+          echo "PASS production C client and host adapters compiled under ASan/UBSan"
+
+      - name: Test against official pinned ssserver-rust container (loopback only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          IMAGE="ghcr.io/shadowsocks/ssserver-rust:v1.25.0@sha256:1816b2b09f3db929a688e48efb1333e4ee459ba158a951f9e73c3580628ab964"
+          CONTAINER="s3-p2-ss2022-official"
+          CONFIG="$RUNNER_TEMP/s3-ssserver-config.json"
+          ECHO_LOG="$RUNNER_TEMP/s3-p2-echo-target.log"
+          READY="$RUNNER_TEMP/s3-p2-target-ready"
+          # These are PUBLIC, fixed test vectors; no production VPS or PSK.
+          cat > "$CONFIG" <<'JSON'
+          {
+            "server": "127.0.0.1",
+            "server_port": 18449,
+            "password": "AAECAwQFBgcICQoLDA0ODw==",
+            "method": "2022-blake3-aes-128-gcm",
+            "mode": "tcp_only",
+            "timeout": 10
+          }
+          JSON
+          sudo -n python3 -u tests/ss2022/official_loopback_targets.py \
+            --ready "$READY" --echo-log "$ECHO_LOG" &
+          TARGET_PID=$!
+          cleanup() {
+            docker logs "$CONTAINER" --tail 80 2>&1 || true
+            docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+            sudo -n kill "$TARGET_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do
+            if [[ -s "$READY" ]]; then break; fi
+            sleep 0.2
+          done
+          test -s "$READY"
+          # Exact amd64 image hash from the official GHCR v1.25.0 package.
+          docker pull "$IMAGE"
+          docker run --rm -d --name "$CONTAINER" --network host \
+            -v "$CONFIG:/etc/shadowsocks-rust/config.json:ro" "$IMAGE"
+          for i in $(seq 1 40); do
+            if python3 - <<'PY'
+          import socket
+          try:
+              with socket.create_connection(("127.0.0.1", 18449), timeout=0.5):
+                  pass
+          except OSError:
+              raise SystemExit(1)
+          PY
+            then break; fi
+            sleep 0.25
+          done
+          test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER")" = true
+
+          export ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+          export UBSAN_OPTIONS=halt_on_error=1
+          /tmp/s3_ss2022_official_probe tcp 18449
+          /tmp/s3_ss2022_official_probe dns 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 1
+          /tmp/s3_ss2022_official_probe badkey 18449
+          /tmp/s3_ss2022_official_probe bad-dns 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 1
+          /tmp/s3_ss2022_official_probe replay 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 2
+          /tmp/s3_ss2022_official_probe stale 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 2
+          docker stop -t 1 "$CONTAINER"
+          /tmp/s3_ss2022_official_probe offline 18449
+          test "$(wc -l < "$ECHO_LOG")" -eq 2
+          echo "PASS official shadowsocks-rust TCP/DNS/PSK/replay/stale/offline; no direct fallback"
+
+      - name: Verify terminal gates and production exclusions
+        run: |
+          python3 tests/ss2022/test_p2_exit_source.py
+          echo "Host-genuine SS2022 official-server interop PASS; actual VPS hardware NOT RUN"
+          echo "P4 release blocker: SS2022 NVS configuration remains unencrypted"
