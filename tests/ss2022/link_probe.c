@@ -66,23 +66,33 @@ static void test_relay(int port)
     s3_ss2022_node_wipe(&node);
     printf("PASS SS2022 live localhost TCP encrypted relay and authenticated response\n");
 }
-static void test_dns(int port)
+static void test_dns(int port, bool reject)
 {
     s3_ss2022_node_t node;
     init_node(&node, port);
     uint8_t packet[512] = {0x12,0x34,0x01,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00};
     int len = 12;
-    assert(s3_ss2022_dns_query(&node,"1.1.1.1",packet,&len,sizeof(packet)));
-    assert(len == 12 && packet[0] == 0x12 && packet[1] == 0x34);
-    assert(packet[2] == 0x81 && packet[3] == 0x80);
+    uint8_t original[sizeof(packet)];
+    memcpy(original, packet, sizeof(original));
+    bool ok = s3_ss2022_dns_query(&node, "1.1.1.1", packet, &len, sizeof(packet));
+    assert(ok == !reject);
+    assert(len == 12);
+    if (reject)
+        assert(memcmp(original, packet, sizeof(packet)) == 0);
+    else {
+        assert(packet[0] == 0x12 && packet[1] == 0x34);
+        assert(packet[2] == 0x81 && packet[3] == 0x80);
+    }
     s3_ss2022_node_wipe(&node);
-    printf("PASS SS2022 encrypted TCP DNS query (no direct UDP fallback)\n");
+    printf("PASS SS2022 %s DNS over authenticated TCP; failed query unchanged\n",
+           reject ? "rejected" : "accepted");
 }
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1],"config")) test_config();
     else if (argc == 3 && !strcmp(argv[1],"relay")) test_relay(atoi(argv[2]));
-    else if (argc == 3 && !strcmp(argv[1],"dns")) test_dns(atoi(argv[2]));
+    else if (argc == 3 && !strcmp(argv[1],"dns")) test_dns(atoi(argv[2]), false);
+    else if (argc == 3 && !strcmp(argv[1],"dns-reject")) test_dns(atoi(argv[2]), true);
     else return 2;
     return 0;
 }
