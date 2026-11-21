@@ -5,11 +5,12 @@
 idf_component_register(
     SRCS
         "muse_ss2022.c"
+        "s3_ss2022_link.c"
         "third_party/blake3/blake3.c"
         "third_party/blake3/blake3_dispatch.c"
         "third_party/blake3/blake3_portable.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES mbedtls
+    REQUIRES mbedtls esp_netif nvs_flash lwip esp_hw_support
 )
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     BLAKE3_NO_SSE2 BLAKE3_NO_SSE41 BLAKE3_NO_AVX2

@@ -1,0 +1,112 @@
+name: P2-2 SS2022 transparent TCP integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ss2022-link:
+    name: SS2022 TCP/DNS mock interop, safety invariants and ESP32-S3 build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install host and ESP32-S3 build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libmbedtls-dev clang-format
+          python -m pip install --disable-pip-version-check \
+            blake3==1.0.8 cryptography==46.0.3 platformio==6.1.18
+
+      - name: Verify fixed SS2022 source and licenses
+        run: python tools/check_ss2022_vendor.py
+
+      - name: Build actual SS2022 C transport and host fixtures under ASan/UBSan
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512 -DBLAKE3_USE_NEON=0 \
+            -Itests/ss2022/link_host_stubs -Icomponents/s3_ss2022 \
+            components/s3_ss2022/muse_ss2022.c \
+            components/s3_ss2022/s3_ss2022_link.c \
+            components/s3_ss2022/third_party/blake3/blake3.c \
+            components/s3_ss2022/third_party/blake3/blake3_dispatch.c \
+            components/s3_ss2022/third_party/blake3/blake3_portable.c \
+            tests/ss2022/link_host_stubs/nvs_fake.c \
+            tests/ss2022/link_probe.c -lmbedcrypto \
+            -o /tmp/s3_ss2022_link_probe
+
+      - name: Execute independent Python AES-GCM SS2022 TCP/DNS service tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+          S3_LINK_PROBE=/tmp/s3_ss2022_link_probe \
+            python tests/ss2022/test_link_integration.py
+
+      - name: Checkout immutable upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+
+      - name: Apply complete P1 baseline and one P2-2 adapter integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for patch in \
+            patches/0001-tcp-only-drop-internet-udp.patch \
+            patches/0002-tcp-only-enforce-no-direct-route.patch \
+            patches/0003-validate-and-fail-closed-ipv4-input.patch \
+            patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C upstream apply --check "../$patch"
+            git -C upstream apply "../$patch"
+          done
+          mkdir -p upstream/components
+          cp -R components/s3_ss2022 upstream/components/
+          python tools/apply_p2_ss2022.py
+          python - <<'PY'
+          from pathlib import Path
+          config = Path("upstream/platformio.ini")
+          text = config.read_text()
+          name = "[env:esp32s3_r8n16]\n"
+          assert text.count(name) == 1
+          config.write_text(text.replace(name, name + "build_flags = -DS3_PROXY_TCP_ONLY=1\n", 1))
+          PY
+
+      - name: Audit SS2022 mode route/DNS fallbacks and format generated C
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/ss2022/test_integration_source.py
+          clang-format -i upstream/src/main.c upstream/src/router_config.h \
+            upstream/components/s3_ss2022/s3_ss2022_link.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.h
+          clang-format --dry-run --Werror --style=file upstream/src/main.c \
+            upstream/src/router_config.h \
+            upstream/components/s3_ss2022/s3_ss2022_link.c \
+            upstream/components/s3_ss2022/s3_ss2022_link.h
+          python tests/ss2022/test_integration_source.py
+
+      - name: Build modified ESP32-S3 R8N16 firmware with active SS2022 TCP mode
+        working-directory: upstream
+        run: pio run -e esp32s3_r8n16
+
+      - name: Evidence scope
+        run: |
+          echo "Verified: real C SS2022-to-P1 TCP and DNS source integration, host mock server interop and MCU build."
+          echo "Not verified: real VPS, encrypted NVS, 4B audio/display/Wi-Fi hardware, IPv6-only VPS."
