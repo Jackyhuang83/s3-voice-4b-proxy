@@ -190,7 +190,17 @@ jobs:
           t=cfg.read_text()
           needle="[env:esp32s3_r8n16]\n"
           assert t.count(needle)==1
-          cfg.write_text(t.replace(needle,needle+"build_flags = -DS3_PROXY_TCP_ONLY=1\n",1))
+          assert "ota_0,     app,  ota_0,   0x20000,  0x500000," in Path("upstream/partitions.csv").read_text()
+          assert "ota_1,     app,  ota_1,   0x520000, 0x500000," in Path("upstream/partitions.csv").read_text()
+          sdk = Path("upstream/sdkconfig.defaults.r8n16").read_text()
+          assert "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" in sdk
+          assert 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' in sdk
+          # The board manifest's 1MiB upload maximum is STALE. Vendor's
+          # existing R8N16 16MiB layout has two 5MiB OTA app slots.
+          # Update only PlatformIO size-check metadata; do not repartition.
+          cfg.write_text(t.replace(needle,needle+
+              "build_flags = -DS3_PROXY_TCP_ONLY=1\n"+
+              "board_upload.maximum_size = 5242880\n",1))
           PY
           python tests/ipv6/test_source_ipv6.py
           clang-format -i upstream/src/main.c \
