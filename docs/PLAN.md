@@ -20,7 +20,7 @@
 | P1 | [#4](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/4) | 固定上游静态分析与代码质量基线 | clang-format、控制流、静态分析通过 | 15% | MERGED |
 | P1 | [#5](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/5) | TCP-only 入口和互联网 UDP/QUIC 阻断，保留 DHCP/DNS | 补丁可应用、策略静态检查、修改后 R8N16 编译通过 | 30% | MERGED |
 | P1 | [#6](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/6) | 路由直连开关隔离、STA 断开时保持截获、Fail-Closed 最小修复；同时固定本 PR 总计划 | 所有 CI 通过、仅 TCP-only 编译生效、确认不会自动选择 direct | 25% | MERGED (#6; e5b4d768) |
-| P1 | [P1-4](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pulls) | 集中补充源侧/宿主机回归测试：TCP、短 UDP、DHCP、AP 本地 DNS、分片异常、资源耗尽、断链及无直连旁路；P1 阶段总结 | 负向测试与修改后固件构建通过；未能模拟的真实 Wi-Fi 项目明确留至 P4 | 30% | PLANNED |
+| P1 | [#7 / P1-4](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/7) | 集中补充源侧/宿主机回归测试：TCP、短 UDP、DHCP、AP 本地 DNS、分片异常、资源耗尽、断链及无直连旁路；P1 阶段总结 | 负向测试与修改后固件构建通过；未能模拟的真实 Wi-Fi 项目明确留至 P4 | 30% | OPEN / CI running; P1 final planned PR |
 | P2 | P2-1 | 从 rlog 选择性导入 AES128-GCM SS2022 TCP 协议和最低必要依赖，保留许可证 | 单元编译、协议向量、密钥/时间/内存边界审核 | 30% | PLANNED |
 | P2 | P2-2 | 与现成透明 TCP 流表/中继接口结合：SS2022 请求封装、加密读写、连接资源生命周期 | 不复制 lwIP TCP 路由器；修改后固件编译及协议数据流测试 | 40% | PLANNED |
 | P2 | P2-3 | SS2022 IPv4 VPS 互通和认证错误/中断/错误密钥负向测试，P2 阶段总结 | 可复现的端到端 TCP 互通与 Fail-Closed 自动验收 | 30% | PLANNED |
