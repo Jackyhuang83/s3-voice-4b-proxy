@@ -47,7 +47,9 @@ int s3_gateway_tcp_listen(esp_netif_t *gateway_ap)
 }
 
 bool s3_gateway_tcp_accept_and_relay(int listener, esp_netif_t *gateway_ap,
-                                     const s3_gateway_dns_upstream_t *node)
+                                     const s3_gateway_dns_upstream_t *node,
+                                     s3_gateway_client_event_t client_event,
+                                     void *event_arg)
 {
     if (listener < 0 || !s3_gateway_policy_ready(s3_gateway_policy_device()))
         return false;
@@ -59,6 +61,9 @@ bool s3_gateway_tcp_accept_and_relay(int listener, esp_netif_t *gateway_ap,
     if (client < 0) return false;
     bool success = false;
     bool have_flow = false;
+    bool registered = false;
+    if (!client_event || !client_event(client, true, event_arg)) goto done;
+    registered = true;
     transparent_tcp_flow_t flow = {0};
     uint32_t client_ip = peer.sin_addr.s_addr;
     uint16_t client_port = ntohs(peer.sin_port);
@@ -94,6 +99,8 @@ bool s3_gateway_tcp_accept_and_relay(int listener, esp_netif_t *gateway_ap,
         break;
     }
 done:
+    /* Unregister before close: the supervisor never closes a reused fd. */
+    if (registered) (void)client_event(client, false, event_arg);
     shutdown(client, SHUT_RDWR);
     close(client);
     if (have_flow) transparent_tcp_remove(client_ip, client_port);
