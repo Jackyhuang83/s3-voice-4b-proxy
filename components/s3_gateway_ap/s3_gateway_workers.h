@@ -11,6 +11,8 @@
 bool s3_gateway_workers_start_dns(esp_netif_t *ap);
 /* Bounded two-client TCP relay, encrypted and fail closed. Never auto-arm. */
 bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *node);
+/* Explicit local UI action using already provisioned SS2022 NVS credentials. */
+bool s3_gateway_workers_admin_arm_saved_ss2022(void);
 /* Nonblocking: safe in Xiaozhi Wi-Fi event callback; old epoch revoked. */
 void s3_gateway_workers_revoke(void);
 void s3_gateway_workers_request_stop(void);

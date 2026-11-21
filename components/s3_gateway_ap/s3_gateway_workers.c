@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include "freertos/FreeRTOS.h"
@@ -42,7 +43,7 @@ static bool initialized_once;
 static SemaphoreHandle_t client_mutex;
 static int active_clients[S3_GW_RELAYS] = {-1, -1};
 static owned_node_t node_storage;
-static bool configuration_in_progress;
+static volatile uint32_t configuration_in_progress;
 static volatile uint32_t revoke_requested;
 
 static bool is_stopping(void)
@@ -208,18 +209,22 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
     /* Called only from a dedicated local administrator task; never from
      * Wi-Fi event callbacks or Xiaozhi audio/GUI dispatch.
      */
-    if (!owner_ap || is_stopping() || configuration_in_progress ||
+    if (!owner_ap || is_stopping() ||
         __atomic_load_n(&authorized, __ATOMIC_ACQUIRE) ||
         !src || relay_fd < 0)
         return false;
-    if (!client_mutex || xSemaphoreTake(client_mutex, pdMS_TO_TICKS(100)) != pdTRUE)
+    uint32_t expected = 0;
+    if (!__atomic_compare_exchange_n(&configuration_in_progress, &expected,
+                                     1u, false, __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE))
         return false;
+    if (!client_mutex || xSemaphoreTake(client_mutex, pdMS_TO_TICKS(100)) != pdTRUE)
+        goto release_configuration;
     bool busy = false;
     for (unsigned i = 0; i < S3_GW_RELAYS; ++i)
         if (active_clients[i] >= 0) busy = true;
     xSemaphoreGive(client_mutex);
-    if (busy) return false;
-    configuration_in_progress = true;
+    if (busy) goto release_configuration;
     uint32_t epoch = s3_gateway_session_epoch(s3_gateway_session_device());
     bool ok = false;
     if (!epoch ||
@@ -235,6 +240,12 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         goto done;
     wipe(&node_storage, sizeof(node_storage));
     if (!copy_node(src, &node_storage)) goto done;
+    /* Prefer Xiaozhi's own already-synchronized clock. Never initialize a
+     * competing SNTP client unless the clock is still implausible.
+     */
+    if (node_storage.cfg.transport == S3_GATEWAY_DNS_SS2022 &&
+        time(NULL) < (time_t)1700000000 &&
+        !s3_ss2022_start_clock()) goto done;
     if (!s3_gateway_dns_probe_node(&node_storage.cfg)) goto done;
     if (is_stopping() ||
         !s3_gateway_session_node_proven(s3_gateway_session_device(), epoch))
@@ -254,25 +265,43 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         !is_stopping() ||
         !s3_gateway_policy_ready(s3_gateway_policy_device()))
         goto done;
+    __atomic_store_n(&revoke_requested, 0u, __ATOMIC_RELEASE);
     __atomic_store_n(&authorized, 1u, __ATOMIC_RELEASE);
     transparent_tcp_set_enabled(true);
     ok = true;
 done:
     if (!ok) {
         __atomic_store_n(&authorized, 0u, __ATOMIC_RELEASE);
-        s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_ADMIN_DISARM);
+        s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_NODE_INVALIDATED);
         (void)s3_gateway_session_event(s3_gateway_session_device(),
                                        S3_SESSION_NODE_FAILED);
         transparent_tcp_set_enabled(false);
         wipe(&node_storage, sizeof(node_storage));
     }
-    configuration_in_progress = false;
+release_configuration:
+    __atomic_store_n(&configuration_in_progress, 0u, __ATOMIC_RELEASE);
+    return ok;
+}
+bool s3_gateway_workers_admin_arm_saved_ss2022(void)
+{
+    /* Uses previously provisioned physical-USB NVS node, no secrets in
+     * project repository; must be explicitly invoked from local UI task.
+     */
+    s3_ss2022_node_t node = {0};
+    if (!s3_ss2022_node_load(&node)) return false;
+    s3_gateway_dns_upstream_t settings = {
+        .transport = S3_GATEWAY_DNS_SS2022,
+        .ss2022_node = &node,
+        .resolver = "1.1.1.1"
+    };
+    bool ok = s3_gateway_workers_admin_arm(&settings);
+    s3_ss2022_node_wipe(&node);
     return ok;
 }
 void s3_gateway_workers_revoke(void)
 {
     __atomic_store_n(&authorized, 0u, __ATOMIC_RELEASE);
-    s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_ADMIN_DISARM);
+    s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_NODE_INVALIDATED);
     (void)s3_gateway_session_event(s3_gateway_session_device(),
                                    S3_SESSION_ADMIN_OFF);
     transparent_tcp_set_enabled(false);

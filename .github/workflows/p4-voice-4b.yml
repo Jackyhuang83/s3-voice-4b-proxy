@@ -195,6 +195,7 @@ jobs:
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
           grep -q "s3_gateway_workers.c" build/compile_commands.json
+          grep -q "s3_gateway_workers_admin_arm_saved_ss2022" components/s3_gateway_ap/s3_gateway_workers.c
           grep -q "s3_gateway_session.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
