@@ -59,6 +59,19 @@ jobs:
             tests/p4/test_dns_fuzz.c -o /tmp/p4_dns_fuzz
           /tmp/p4_dns_fuzz
 
+      - name: Host DNS encrypted-proxy routing negative matrix
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns -Icomponents/s3_ss2022 \
+            -Icomponents/s3_vless_tls -Icomponents/s3_gateway_policy \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            components/s3_gateway_dns/s3_gateway_dns_processor.c \
+            tests/p4/test_dns_processor.c -o /tmp/p4_dns_process
+          /tmp/p4_dns_process
+          ! grep -E '(^|[^_])socket\(|SOCK_DGRAM|sendto\(' \
+            components/s3_gateway_dns/s3_gateway_dns_processor.c
+
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
           set -euo pipefail
@@ -112,6 +125,7 @@ jobs:
           grep -q "s3_gateway_policy" build/compile_commands.json
           grep -q "s3_gateway_ip4.c" build/compile_commands.json
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_processor.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json

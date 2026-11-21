@@ -168,6 +168,26 @@ UDP/TCP :53 listener and no calls to `s3_ss2022_dns_query` or
 ESP-IDF 6.1), SS2022/VLESS encrypted relay, DNS cache and AP leak-proof
 packet capture remain P4-1 work.
 
+## Encrypted DNS tunnel dispatch (source only)
+
+`s3_gateway_dns_process` now dispatches strictly to the already-tested
+`s3_ss2022_dns_query` or `s3_vless_tls_dns_query` APIs. If a node/relay
+has not been authorized, the selected secure transport refuses, an upstream
+response fails canonical ID/question checks, or the gateway policy is
+revoked *while the request is in flight*, it produces local DNS
+`SERVFAIL`. There is **no direct DNS socket or UDP fallback** in this
+component. The API takes explicit, nonlogged proxy-node configuration;
+it never reads or writes the 4B's existing NVS itself.
+
+A host test mocks both encrypted APIs to cover successful SS2022/VLESS
+replies, invalid IDs and questions, transport failure, missing resolver,
+disabled transport, unauthorized gateway and mid-request disconnect.
+This is not evidence of DNS network connectivity.
+
+Still pending: one-owner APSTA lifecycle, secure node/SSID provisioning,
+UDP/TCP DNS listeners, AP DHCP DNS option, packet capture leak checks,
+live encrypted DNS/VLESS handshake, and hardware voice/audio regression.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.

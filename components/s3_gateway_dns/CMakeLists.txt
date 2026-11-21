@@ -1,1 +1,6 @@
-idf_component_register(SRCS "s3_gateway_dns_codec.c" INCLUDE_DIRS ".")
+# Query binding + response failure handling; no DNS listening socket.
+idf_component_register(
+    SRCS "s3_gateway_dns_codec.c" "s3_gateway_dns_processor.c"
+    INCLUDE_DIRS "."
+    REQUIRES s3_ss2022 s3_vless_tls s3_gateway_policy
+)
