@@ -1,6 +1,6 @@
 # P2-2 — SS2022 透明 TCP / DNS 接入与验收
 
-**阶段计划不变：P2 仅 3 PR；本文件属于 P2-2（权重 40%）。** 当前证据以 PR #9 CI 为准；未合并前 P2 仍按 30% 计算。
+**阶段计划不变：P2 仅 3 PR；本文件属于 P2-2（权重 40%）。PR #9 已经通过所有 CI 并合并；P2 当前 70%，项目整体 53%。**
 
 ## 集成方案
 
@@ -49,4 +49,11 @@
 
 ## 验收结论
 
-**PENDING:** 仅以 CI 实际结论和合并记录为准。CI 修复必须在本 PR 中完成。
+**PASS / MERGED（源码、宿主机功能、R8N16 构建三层证据）**
+
+- [PR #9](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/9) Squash Merge，主分支 Commit `29022f73504c386846efcb24c2449c66feace484`。
+- [P2-2 CI Run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44878209441)：真实 C 节点 NVS、PSRAM、SNTP 和 SS2022 TCP adapter 在 Linux ASan/UBSan 环境编译并与独立 Python 服务端互通；加密 TCP 及 DNS-over-TCP 功能和分片响应均通过。
+- P1 0001～0004 全部补丁、P2-2 精确源码接入、Fail-Closed 与 DNS 无直连安全断言通过；**完整 ESP32-S3 R8N16 固件构建 PASS**。
+- 同一 Commit 下，原版构建、P1 编译与测试、P2-1 向量及静态分析共 6 项 GitHub Actions 全部 `success`。
+- 实施过程中发现 DNS TCP 回包不能限制为五次读，已在本 PR 调整为**15 秒总时间和 256 次碎片读取**双重限额，并由真实 mock 回包验证通过。
+- **NOT RUN（P2-3/P3/P4 验收）**：真实外部 VPS SS2022 互通、连接恢复/实际网络丢包、IPv6-only VPS、4B Wi-Fi/音频/LCD、硬件资源压力、NVS 加密与生产安全发布。
