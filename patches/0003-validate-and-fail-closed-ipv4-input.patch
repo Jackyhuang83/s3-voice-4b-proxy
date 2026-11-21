@@ -1,7 +1,7 @@
 diff --git a/src/transparent_tcp.c b/src/transparent_tcp.c
 --- a/src/transparent_tcp.c
 +++ b/src/transparent_tcp.c
-@@ -157,149 +157,209 @@
+@@ -157,148 +157,208 @@
  int transparent_tcp_ip4_input(struct pbuf *packet, struct netif *input_netif)
  {
      if (!s_enabled)
@@ -224,5 +224,4 @@ diff --git a/src/transparent_tcp.c b/src/transparent_tcp.c
      pbuf_free(packet);
      return 1;
  }
- 
  
