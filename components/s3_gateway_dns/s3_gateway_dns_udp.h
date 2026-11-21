@@ -4,6 +4,7 @@
  * Caller owns task life cycle, AP netif and upstream credentials.
  */
 #pragma once
+#include <stdbool.h>
 #include "esp_netif.h"
 #include "s3_gateway_dns_processor.h"
 

@@ -5,9 +5,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include "s3_gateway_dns_udp.h"
+#include "s3_gateway_dns_codec.h"
 
 static bool ap_ip(esp_netif_t *ap, esp_netif_ip_info_t *out)
 {
