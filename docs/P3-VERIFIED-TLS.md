@@ -34,4 +34,10 @@
 
 ## Current acceptance
 
-**PENDING** until this PR's full CI succeeds and it is merged. CI green is only host/function/build evidence, not hardware validation.
+**PASS / MERGED（源码、真实 host TLS 功能和 ESP-IDF 固件构建）**
+
+- [PR #11](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/11) 已 Squash Merge 到 `main`，Commit `43befc6cc0a4a13431976f79ef1114ddc41ff9fe`。
+- [P3-1 GitHub Actions](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44880564684) `success`：实际生产 C 模块通过 host OpenSSL 证书链/SNI/SAN 测试、VLESS/TCP 回显和加密 DNS；错误 CA、错误 hostname、没有服务器、无效 VLESS 响应和数字 IP hostname 均 fail-closed。
+- P1 四份补丁、P2 适配器与本次 P3-1 的精确源码集成、明文路径禁用、证书校验强制断言通过；**修改后完整 ESP32-S3 R8N16 PlatformIO/ESP-IDF 固件编译成功**。
+- PR #11 Head SHA 上 **8 项 CI 工作流全部 success**（包括 P0/P1/P2 完整回归）。
+- **P3-1 = 40% of P3 已验收**；P3-2 IPv6-only VPS/P3-3 双协议双栈与 P4 真实 4B、NVS 加密、音频/LCD、部署安全均 NOT RUN。
