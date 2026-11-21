@@ -213,6 +213,32 @@ address). This preserves the user's outbound IPv6-only VPS feature
 instead of disabling IPv6 system-wide. This is source/build-only
 protection pending hardware APSTA and IPv6 packet-capture validation.
 
+## 78/esp-wifi-connect: single owner, no automatic NVS erase
+
+The original Xiaozhi 4B voice app uses `78/esp-wifi-connect:~3.3.3`.
+The exact upstream annotated v3.3.3 tag resolves to Git commit
+`77095063d77e7705f68e95005c43ed73582233ce`.
+**This is the existing Wi-Fi driver owner**, not a second driver.
+The official upstream Wi-Fi manager has a separate NVS corruption
+recovery path that calls `nvs_flash_erase()`; patching only Xiaozhi's
+`main/main.cc` does not prove zero automatic erases in every path.
+The isolated CI source now overlays the same tagged Wi-Fi component
+and replaces **only** that destructive branch with a fail-closed error.
+
+The original station scan/connection, configuration AP and
+`esp_wifi_init()` ownership remain untouched. The 4B build must
+prove the local, patched tagged component is the one actually compiled,
+rather than silently selecting a registry-managed duplicate. No
+credentials are introduced into the public repository.
+
+**APSTA has not been enabled in this change.** Official ESP-IDF Wi-Fi
+documentation says the AP interface must be enabled before calling
+`esp_wifi_set_config(WIFI_IF_AP)`. Simply switching a running
+station to APSTA and then configuring the AP risks briefly
+broadcasting an unconfigured hotspot. The follow-on integration must
+configure the AP before `esp_wifi_start()` using the existing
+single-owner station startup path and explicit authorization.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.

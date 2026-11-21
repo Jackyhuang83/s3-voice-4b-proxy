@@ -32,6 +32,7 @@ jobs:
           set -euo pipefail
           python -m py_compile tools/p4_prepare_voice.py
           python -m py_compile tools/p4_import_tcp.py
+          python -m py_compile tools/p4_prepare_wifi.py
           python tools/check_ss2022_vendor.py
 
       - name: Host C11 negative matrix for 4B fail-closed lifecycle policy
@@ -118,6 +119,16 @@ jobs:
           grep -Fq "void transparent_tcp_uninstall_ap_output(void)" voice/components/s3_tcp_guard/transparent_tcp.c
           grep -Fq "bool transparent_tcp_is_reinjecting(void)" voice/components/s3_tcp_guard/transparent_tcp.c
 
+      - name: Pin the original Xiaozhi Wi-Fi owner and prevent second NVS erase
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/78/esp-wifi-connect.git wifi-source
+          git -C wifi-source checkout --detach 77095063d77e7705f68e95005c43ed73582233ce
+          python tools/p4_prepare_wifi.py --voice voice --wifi-source wifi-source
+          test "$(git -C wifi-source rev-parse HEAD)" = 77095063d77e7705f68e95005c43ed73582233ce
+          ! grep -q 'nvs_flash_erase()' voice/components/78__esp-wifi-connect/wifi_manager.cc
+          grep -q 'refusing automatic erase' voice/components/78__esp-wifi-connect/wifi_manager.cc
+
       - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
         working-directory: voice
         run: |
@@ -127,6 +138,7 @@ jobs:
             --name esp32-s3-touch-lcd-4b --language zh-CN
           test -s build/merged-binary.bin
           grep -q "s3_gateway_policy" build/compile_commands.json
+          grep -q '/components/78__esp-wifi-connect/wifi_manager.cc' build/compile_commands.json
           grep -q "s3_gateway_ip4.c" build/compile_commands.json
           grep -q "s3_gateway_ip6.c" build/compile_commands.json
           grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
