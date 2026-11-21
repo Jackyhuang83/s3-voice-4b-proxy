@@ -58,3 +58,62 @@ jobs:
         run: |
           echo "Lint and static analysis only, against unmodified upstream source."
           echo "No TCP-only removal, SS2022, TLS, IPv6-only node, or 4B hardware behavior tested."
+
+  # R2-P1-1: validate the exactly copied upstream C files against original
+  # author harnesses, without replacing the real Xiaozhi voice/Wi-Fi owner.
+  r2-noaic-original-core:
+    name: R2-P1-1 NOAIC exact imported C and original unit harnesses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact original NOAIC release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init /tmp/r2-noaic
+          git -C /tmp/r2-noaic remote add origin https://github.com/noaic/esp32-socks5-gateway.git
+          git -C /tmp/r2-noaic fetch --depth 1 origin 0be56938acace1d083be746b3f6c60886259e81e
+          git -C /tmp/r2-noaic checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/r2-noaic rev-parse HEAD)" = "0be56938acace1d083be746b3f6c60886259e81e"
+      - name: Provenance gate - all six imported files are byte identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in flow_table.c flow_table.h packet_rewrite.c packet_rewrite.h ap_clients.c ap_clients.h; do
+            cmp -s "components/s3_noaic_core/$file" "/tmp/r2-noaic/main/$file" || {
+              echo "Source drift detected: $file"; exit 1;
+            }
+            sha256sum "components/s3_noaic_core/$file"
+          done
+          cmp -s components/s3_noaic_core/LICENSE.noaic /tmp/r2-noaic/LICENSE
+          test -s components/s3_noaic_core/CMakeLists.txt
+          ! grep -E 'esp_wifi_init|esp_wifi_set_mode|nvs_flash_erase|esp_netif_create_default_wifi' components/s3_noaic_core/{flow_table,packet_rewrite,ap_clients}.c
+          test ! -f components/s3_noaic_core/app_main.c
+          echo 'R2_P1_NOAIC_BYTE_EXACT_PASS'
+      - name: Reuse original flow table and AP client C harnesses against imported files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r2-host-tests
+          cc -std=c11 -Wall -Wextra -Werror -Icomponents/s3_noaic_core \
+            /tmp/r2-noaic/tests/flow_table_harness.c \
+            components/s3_noaic_core/flow_table.c -o /tmp/r2-host-tests/flow
+          /tmp/r2-host-tests/flow
+          cc -std=c11 -Wall -Wextra -Werror -pthread -Icomponents/s3_noaic_core \
+            /tmp/r2-noaic/tests/ap_clients_harness.c \
+            components/s3_noaic_core/ap_clients.c components/s3_noaic_core/flow_table.c \
+            -o /tmp/r2-host-tests/clients
+          /tmp/r2-host-tests/clients
+          echo 'R2_P1_IMPORTED_C_HARNESSES_PASS'
+      - name: Re-run the original upstream packet rewrite test vectors
+        working-directory: /tmp/r2-noaic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_packet_rewrite.py' -v
+          echo 'R2_P1_PACKET_REWRITE_ORIGINAL_TESTS_PASS'
+      - name: Scope / no-device boundary
+        run: |
+          echo "Imported files are byte-identical to the tested MIT upstream."
+          echo "No ESP32 device, XiaoZhi audio, AP transparent route or SS2022/VLESS runtime verified in this P1-1 host check."
