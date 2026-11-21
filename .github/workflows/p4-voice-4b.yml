@@ -139,7 +139,7 @@ jobs:
           grep -q 'refusing automatic erase' voice/components/78__esp-wifi-connect/wifi_manager.cc
           grep -q 's3_gateway_ap_pre_start' voice/components/78__esp-wifi-connect/wifi_station.cc
           grep -q 's3_gateway_ap_after_stop' voice/components/78__esp-wifi-connect/wifi_station.cc
-          test "$(grep -c 'esp_wifi_start();' voice/components/78__esp-wifi-connect/wifi_station.cc)" = 1
+          test "$(grep -Fc 'ESP_ERROR_CHECK(esp_wifi_start());' voice/components/78__esp-wifi-connect/wifi_station.cc)" = 1
 
       - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
         working-directory: voice
