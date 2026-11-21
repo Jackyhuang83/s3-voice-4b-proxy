@@ -1,0 +1,27 @@
+name: P4-3 read-only 16MB backup and production release blocker
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safety-and-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: P4-3 original partition, backup and release negative matrix
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests/p4 -p 'test_p4_3_*.py' -v
+          python -m py_compile tools/p4_flash_backup.py tools/p4_release_gate.py
+      - name: Forbid destructive operations and unsafe production release
+        run: |
+          set -euo pipefail
+          grep -q 'read-flash' tools/p4_flash_backup.py
+          ! grep -E '"write-flash"|"erase-flash"|"efuse-burn"' tools/p4_flash_backup.py
+          ! grep -F 'CONFIG_NVS_ENCRYPTION=y' tools/p4_prepare_voice.py
+          if python tools/p4_release_gate.py; then
+            echo 'INVALID: release approved without real S3 evidence'
+            exit 1
+          fi
+          echo 'P4_3_HOST_CI_PASS; PRODUCTION_RELEASE_BLOCKED; hardware NOT RUN'
