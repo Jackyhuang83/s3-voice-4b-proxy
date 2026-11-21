@@ -5,9 +5,12 @@
 - 在串口输入如下命令（不要把真实密钥贴进 GitHub/聊天记录）：
   - s3_ap "YourSSID" "YourWPA2Password"：保存 AP WPA2 凭据并在下次重启生效。
   - s3_ss your-vps.example.com 443 BASE64_16_BYTE_KEY：保存原 P2 NVS SS2022 节点。
+  - s3_vless example.org 443 UUID：保存证书验证的 VLESS/TLS 节点（只允许与证书匹配的 DNS 主机名）。
+  - s3_use vless 或 s3_use ss2022：切换当前活动协议；随后按物理按钮约 2 秒启用。
   - s3_status：只显示是否已配置，不显示密钥。
   - s3_ap_off：关闭代理授权，下次重启关闭 AP。
   - s3_ss_clear：撤销代理并删除 SS2022 节点。
+  - s3_vless_clear：撤销代理并删除 VLESS/TLS 节点。
 - 两项配置完成后重启设备，待 Xiaozhi 正常连接 STA，按住 **约 2 秒** 松开：由临时任务验证节点并启用代理；再次相同操作关闭。
 - 所有命令仅当手动进入控制台后才可执行；未验证 USB/UART 实机映射，串口回显可能显示所输入的密钥，因此须在可信本地环境使用。开发阶段 NVS 尚未加密，P4-3 正式发布前须解决密钥存储保护。
 - 实机备份、刷写、网络和语音验收均未进行，禁止以源码/编译通过替代。
@@ -16,7 +19,7 @@
 - 精确匹配原 78/xiaozhi 固定 SHA 的 IO 扩展器 PIN4 长按“无动作”分支，**按住约 2 秒松开**，发送一次代理启停请求。不修改原 GPIO0 短按语音、双击 AEC、IO 扩展器短按出厂分区行为；避免长按到 PMIC 的 4 秒关机边界。
 - 开启：临时低优先级任务从已保存的 SS2022 NVS 节点读取并探测、显式 ARM；若 AP/STA 或节点未配置则保持锁闭，不会自动开热点、不允许直连。关闭：立即 revoke 代理授权。
 - **使用前提：** WPA2 AP NVS enabled/SSID/PSK 和 SS2022 NVS node 必须已经以受控方式写入。配置不可用时长按不会生效。无固件刷写和真实设备检验结果，不宣称已实测通过。
-- 当前 VLESS 有认证传输与显式 admin_arm 接口；尚未开发板上 VLESS NVS 节点选择 UI，不把它冒充为已具备完整终端操作。
+- VLESS/TLS 复用 P3 已有证书校验接口，并采用同一本地串口新增 s3_vless TLS_CERT_HOST PORT UUID、s3_use vless 或 s3_use ss2022 选择节点；2 秒物理启停根据 NVS 已选协议调用原有认证 ARM。不添加第二套 UI/网络接口。Reality 不受支持。
 
 ## 功能优先与后续迭代（2026-11-21）
 

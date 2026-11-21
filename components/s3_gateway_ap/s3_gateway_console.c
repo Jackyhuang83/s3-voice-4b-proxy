@@ -17,6 +17,7 @@
 #include "s3_gateway_workers.h"
 #include "s3_gateway_ap_config.h"
 #include "s3_ss2022_link.h"
+#include "s3_gateway_vless_node.h"
 
 static volatile uint32_t console_started;
 static const char *TAG = "s3_setup";
@@ -74,6 +75,52 @@ static int set_ss(int argc, char **argv)
     return ok ? 0 : 1;
 }
 
+static int set_vless(int argc, char **argv)
+{
+    if (argc != 4) {
+        puts("Usage: s3_vless TLS_CERT_HOST PORT UUID");
+        return 1;
+    }
+    errno = 0;
+    char *end = NULL;
+    unsigned long number = strtoul(argv[2], &end, 10);
+    if (errno || !end || *end || !number || number > UINT16_MAX)
+        return 1;
+    bool ok = s3_gateway_vless_store(argv[1], (uint16_t)number, argv[3]);
+    puts(ok ? "VLESS/TLS NODE SAVED. Use s3_use vless to select."
+            : "VLESS/TLS NODE REJECTED. Requires cert hostname and valid UUID.");
+    return ok ? 0 : 1;
+}
+static int clear_vless(int argc, char **argv)
+{
+    (void)argv;
+    if (argc != 1) return 1;
+    s3_gateway_workers_revoke();
+    bool ok = s3_gateway_vless_clear();
+    puts(ok ? "VLESS/TLS NODE CLEARED. Proxy OFF." : "VLESS CLEAR FAILED.");
+    return ok ? 0 : 1;
+}
+static int select_node(int argc, char **argv)
+{
+    if (argc != 2) {
+        puts("Usage: s3_use ss2022|vless");
+        return 1;
+    }
+    uint8_t kind;
+    if (strcmp(argv[1], "ss2022") == 0) kind = 0;
+    else if (strcmp(argv[1], "vless") == 0) kind = 1;
+    else return 1;
+    s3_gateway_workers_revoke();
+    nvs_handle_t h;
+    if (nvs_open("s3_proxy_ap", NVS_READWRITE, &h) != ESP_OK) return 1;
+    esp_err_t rc = nvs_set_u8(h, "node_type", kind);
+    if (rc == ESP_OK) rc = nvs_commit(h);
+    nvs_close(h);
+    puts(rc == ESP_OK ? "NODE TYPE SAVED. Press key ~2s to activate."
+                      : "NODE TYPE SAVE FAILED. Proxy OFF.");
+    return rc == ESP_OK ? 0 : 1;
+}
+
 static int clear_ss(int argc, char **argv)
 {
     (void)argv;
@@ -92,16 +139,23 @@ static int show_status(int argc, char **argv)
     s3_ss2022_node_t node = {0};
     bool saved_node = s3_ss2022_node_load(&node);
     s3_ss2022_node_wipe(&node);
+    s3_gateway_vless_node_t vless = {0};
+    bool saved_vless = s3_gateway_vless_load(&vless);
+    s3_gateway_vless_wipe(&vless);
     nvs_handle_t nvs;
+    uint8_t selected = 0;
     uint8_t enabled = 0;
     bool saved_ap = nvs_open("s3_proxy_ap", NVS_READONLY, &nvs) == ESP_OK;
     if (saved_ap) {
         saved_ap = nvs_get_u8(nvs, "enabled", &enabled) == ESP_OK &&
                    enabled == 1;
+        (void)nvs_get_u8(nvs, "node_type", &selected);
         nvs_close(nvs);
     }
-    printf("AP configured: %s; SS2022 node configured: %s\n",
-           saved_ap ? "yes" : "no", saved_node ? "yes" : "no");
+    printf("AP: %s; SS2022: %s; VLESS/TLS: %s; selected: %s\n",
+           saved_ap ? "yes" : "no", saved_node ? "yes" : "no",
+           saved_vless ? "yes" : "no",
+           selected == 1 ? "vless" : "ss2022");
     puts("Secret values are never displayed. Restart after AP setup.");
     return 0;
 }
@@ -126,6 +180,9 @@ static void setup_thread(void *arg)
             {.command = "s3_ap_off", .help = "Disable gateway AP on next boot", .func = disable_ap},
             {.command = "s3_ss", .help = "Save SS2022 HOST PORT BASE64_KEY", .func = set_ss},
             {.command = "s3_ss_clear", .help = "Delete saved SS2022 node", .func = clear_ss},
+            {.command = "s3_vless", .help = "Save TLS_CERT_HOST PORT UUID", .func = set_vless},
+            {.command = "s3_vless_clear", .help = "Delete VLESS/TLS node", .func = clear_vless},
+            {.command = "s3_use", .help = "Choose ss2022 or vless", .func = select_node},
             {.command = "s3_status", .help = "Show configured status (no secrets)", .func = show_status},
         };
         for (size_t i = 0; i < sizeof(commands)/sizeof(commands[0]); ++i) {

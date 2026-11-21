@@ -14,6 +14,8 @@
 #include "freertos/semphr.h"
 #include "esp_netif.h"
 #include "esp_log.h"
+#include "nvs.h"
+#include "s3_gateway_vless_node.h"
 #include "s3_gateway_workers.h"
 #include "s3_gateway_runtime_guard.h"
 #include "s3_gateway_dns_udp.h"
@@ -350,12 +352,36 @@ void s3_gateway_workers_revoke(void)
 /* The pinned 4B has an unused IO-expander long-press gesture.
  * The network probe must never block that existing key-monitor task.
  */
+static bool admin_arm_saved_selection(void)
+{
+    nvs_handle_t h;
+    uint8_t choice = 0;
+    if (nvs_open("s3_proxy_ap", NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u8(h, "node_type", &choice);
+        nvs_close(h);
+    }
+    if (choice == 0) return s3_gateway_workers_admin_arm_saved_ss2022();
+    if (choice != 1) return false;
+    s3_gateway_vless_node_t node = {0};
+    if (!s3_gateway_vless_load(&node)) return false;
+    s3_gateway_dns_upstream_t settings = {
+        .transport = S3_GATEWAY_DNS_VLESS_TLS,
+        .vless_sni = node.hostname,
+        .vless_port = node.port,
+        .vless_uuid = node.uuid,
+        .resolver = "1.1.1.1"
+    };
+    bool ok = s3_gateway_workers_admin_arm(&settings);
+    s3_gateway_vless_wipe(&node);
+    return ok;
+}
+
 static void admin_button_task(void *arg)
 {
     (void)arg;
-    bool ok = s3_gateway_workers_admin_arm_saved_ss2022();
+    bool ok = admin_arm_saved_selection();
     ESP_LOGI("s3_gateway", "Physical gateway ARM: %s",
-             ok ? "enabled" : "not ready / no saved SS2022 node");
+             ok ? "enabled" : "not ready / missing selected node");
     __atomic_store_n(&admin_button_task_busy, 0u, __ATOMIC_RELEASE);
     vTaskDelete(NULL);
 }
