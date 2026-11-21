@@ -1,6 +1,6 @@
 # P1-4 集中回归与验收记录
 
-状态：验收工作进行中。**PR #7 未验证/合并前，不可将 P1 标为 100%。**
+状态：**P1 源码及自动化验收已通过，PR #7 已合并。P4 真机未验收。**
 上游源版本固定：yanxke/ESP32-VPN-Transparent-Proxy-Router@dfb04b03154cfaee1d8615e4b8942dfe737abc5d，MIT。未修改上游仓库；CI 顺序应用 patches/0001～0004。
 
 ## 需求与检查矩阵
@@ -25,7 +25,7 @@
 - 0001：TCP-only UDP 基础拦截和短包入口，初版已在 PR #5 验证。
 - 0002：去除直连旁路与断线上游时截获关闭，已在 PR #6 验证。
 - 0003：校验 IP 总长和分片，正确读取可变 IHL 后的 TCP/UDP 头，所有异常 TCP 入站失败路径消耗并释放 pbuf（按 lwIP Hook 的所有权语义）。
-- 0004：原 captive_dns_task 在代理 DNS 失败时会回答本地网关地址；TCP-only 下改返回 DNS SERVFAIL。
+- 0004：原 captive_dns_task 在代理 DNS 失败时会回答本地网关地址；TCP-only 正常代理模式下改返回 DNS SERVFAIL，**明确进入配网模式时保留原 Captive Portal DNS**。
 
 ## 源码与官方依据
 
@@ -43,7 +43,12 @@
 
 ## CI 验收结果
 
-CI 检查与固件编译结果以 PR Checks/Actions 为准。本文件不会在未确认实际结果前宣称 PASS。
+- [PR #7](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/7) 已经合并到 main，merge SHA = a7692a898c08c5ec00bb2bd78104225ab21f6f0d。
+- [实际 CI Run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44875289360)：四份补丁应用、静态策略顺序与 clang-format 均 PASS。
+- Host 测试：针对原版 transparent_tcp.c 执行 **23 个**合成报文、故障注入、资源耗尽场景；ASan 与 UBSan PASS。
+- 修改后 PlatformIO `esp32s3_r8n16` 编译 PASS（S3_PROXY_TCP_ONLY=1）。
+- P0 文档检查、原版编译及上游质量检查在该 PR Head SHA 上均 PASS。
+- **NOT RUN / P4 待验收**：4B 实机 AP+STA、真实客户端 DNS/DHCP、断线防泄漏、LCD/语音兼容性。
 
 ## 回退
 
