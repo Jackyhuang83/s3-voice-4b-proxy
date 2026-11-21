@@ -40,3 +40,12 @@ The original upstream hook required a minimum 40-byte packet before interception
 4. Later, actual 4B packet capture/behavior test proves TCP works, Internet UDP/QUIC fails closed, and local DNS/DHCP work.
 
 Never force a device flash or remove a stable firmware to prove a capability already checkable by source/CI.
+
+## PR #6: fail-closed route-mode follow-up
+
+- Audited upstream `src/main.c` at pinned SHA and confirmed direct/upstream mode can be selected via a physical BOOT short press, authenticated management POST and serial command.
+- An additive compile-guarded patch in `patches/0002-tcp-only-enforce-no-direct-route.patch` rejects selections of `TRANSPARENT_MODE_UPSTREAM` in `S3_PROXY_TCP_ONLY` builds.
+- When upstream STA disconnects, TCP-only build keeps the AP ingress interception enabled rather than switching the packet hook off; local DHCP/AP services remain allowed by the existing hook.
+- The release-mode guard deliberately does not alter the original upstream project or its default builds.
+- Compilation/static checks do not certify the end-to-end kill switch: unhandled IPv4 fragments, flow table exhaustion, DNS behavior, and all physical Wi-Fi packet paths still require dedicated review/tests.
+- This patch remains a P1 safety improvement; it adds neither SS2022, encrypted VLESS, IPv6 VPS support nor flashing instructions.
