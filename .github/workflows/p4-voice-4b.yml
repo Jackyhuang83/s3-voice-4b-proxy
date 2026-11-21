@@ -45,6 +45,20 @@ jobs:
           ! grep -R 'esp_wifi_init\|esp_wifi_set_mode\|nvs_flash_erase' components/s3_gateway_policy
           ! grep -R 'SOCK_DGRAM\|socket(' components/s3_gateway_policy
 
+      - name: Host RFC1035 DNS codec SERVFAIL and deterministic bounds
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            tests/p4/test_dns_codec.c -o /tmp/p4_dns_test
+          /tmp/p4_dns_test
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -Icomponents/s3_gateway_dns \
+            components/s3_gateway_dns/s3_gateway_dns_codec.c \
+            tests/p4/test_dns_fuzz.c -o /tmp/p4_dns_fuzz
+          /tmp/p4_dns_fuzz
+
       - name: Fetch exact Xiaozhi voice and 4B drivers (no flashing)
         run: |
           set -euo pipefail
@@ -97,6 +111,7 @@ jobs:
           test -s build/merged-binary.bin
           grep -q "s3_gateway_policy" build/compile_commands.json
           grep -q "s3_gateway_ip4.c" build/compile_commands.json
+          grep -q "s3_gateway_dns_codec.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json

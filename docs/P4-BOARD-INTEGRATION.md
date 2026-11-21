@@ -151,6 +151,23 @@ device flashing, public release or modification to an existing voice unit.
 
 Official reference: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/lwip.html
 
+## AP DNS fail-closed source gate
+
+The bounded, network-free `s3_gateway_dns` C11 module checks canonical
+RFC1035 queries (max 512 bytes), creates SERVFAIL answers on future
+upstream/relay failure, and binds encrypted replies to the exact DNS
+transaction ID plus QNAME/QTYPE/QCLASS. Invalid names, compression
+pointers in questions, malformed and oversized packets are rejected.
+Local C11 tests passed with AddressSanitizer and UndefinedBehaviorSanitizer
+and a deterministic 100,000-input stress matrix. The PR's GitHub Actions
+now repeats both host tests and builds the module in IDF 6.1.
+
+**Not yet functional DNS forwarding:** the gateway has no active AP-local
+UDP/TCP :53 listener and no calls to `s3_ss2022_dns_query` or
+`s3_vless_tls_dns_query`; correct DHCP DNS offer settings (explicit in
+ESP-IDF 6.1), SS2022/VLESS encrypted relay, DNS cache and AP leak-proof
+packet capture remain P4-1 work.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
