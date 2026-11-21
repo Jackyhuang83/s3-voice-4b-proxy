@@ -48,7 +48,25 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' voice/sdkconfig.defaults.esp32s3
           grep -qx 'CONFIG_LWIP_IPV6=y' voice/sdkconfig.defaults.esp32s3
 
-      - name: Compile 4B Xiaozhi voice and linked SS2022/VLESS libraries
+      - name: Import pinned, patched P1 IPv4 flow core for IDF6 ABI compile
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git router
+          git -C router checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C router rev-parse HEAD)" = dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          for patch in \
+            patches/0001-tcp-only-drop-internet-udp.patch \
+            patches/0002-tcp-only-enforce-no-direct-route.patch \
+            patches/0003-validate-and-fail-closed-ipv4-input.patch \
+            patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C router apply --check "../$patch"
+            git -C router apply "../$patch"
+          done
+          python tools/p4_import_tcp.py --router router --voice voice
+          test -s voice/components/s3_tcp_guard/LICENSE.router
+          grep -q S3_PROXY_TCP_ONLY voice/components/s3_tcp_guard/transparent_tcp.c
+
+      - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
         working-directory: voice
         run: |
           set -euo pipefail
@@ -60,7 +78,7 @@ jobs:
           grep -qx 'CONFIG_LWIP_USE_ESP_GETADDRINFO=y' sdkconfig
           grep -qx 'CONFIG_LWIP_IPV6=y' sdkconfig
           grep -qx 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' sdkconfig
-          echo "PASS source + full ESP32-S3 4B voice build with linked protocol components"
+          echo "PASS Xiaozhi voice + SS2022/VLESS + P1 patched TCP core, IDF6 ABI compile"
           echo "NOT PASS: transparent AP TCP gateway runtime / hardware / encrypted NVS"
           echo "NO firmware binary is published as a flashable release."
 
