@@ -114,8 +114,8 @@ def run(mode):
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
     thread.join(timeout=20)
     assert not thread.is_alive(), "mock server hung"
+    assert proc.returncode == 0, f"probe failed: {proc.stdout}\n{proc.stderr}; server errors: {errors}"
     assert not errors, f"server failure: {errors}"
-    assert proc.returncode == 0, f"probe failed: {proc.stdout}\n{proc.stderr}"
     assert "PASS SS2022" in proc.stdout, proc.stdout
     print(proc.stdout.strip())
 
