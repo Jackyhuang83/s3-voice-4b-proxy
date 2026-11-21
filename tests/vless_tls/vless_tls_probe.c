@@ -75,6 +75,8 @@ int main(int argc, char **argv)
     if (port < 1 || port > 65535) return 2;
     if (!strcmp(argv[1], "relay")) relay_test(port, true, "vless.test");
     else if (!strcmp(argv[1], "dns")) dns_test(port, true, "vless.test");
+    else if (!strcmp(argv[1], "dns-reject")) dns_test(port, false, "vless.test");
+    else if (!strcmp(argv[1], "expired")) relay_test(port, false, "vless.test");
     else if (!strcmp(argv[1], "wrong-host")) relay_test(port, false, "wrong.test");
     else if (!strcmp(argv[1], "bad-ca")) relay_test(port, false, "vless.test");
     else if (!strcmp(argv[1], "wrong-host-dns")) dns_test(port, false, "wrong.test");
