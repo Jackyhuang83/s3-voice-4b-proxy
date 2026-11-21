@@ -195,11 +195,14 @@ jobs:
           sdk = Path("upstream/sdkconfig.defaults.r8n16").read_text()
           assert "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" in sdk
           assert 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' in sdk
-          # The board manifest's 1MiB upload maximum is STALE. Vendor's
-          # existing R8N16 16MiB layout has two 5MiB OTA app slots.
-          # Update only PlatformIO size-check metadata; do not repartition.
+          # The vendor's existing R8N16 layout has two 5MiB OTA app slots.
+          # PlatformIO must be explicitly told about that CSV; otherwise
+          # it recomputes a 1MiB check from its DEFAULT board manifest even
+          # when ESP-IDF itself already uses the correct sdkconfig partition.
+          # DO NOT replace this vendor CSV, remove OTA or touch flash hardware.
           cfg.write_text(t.replace(needle,needle+
               "build_flags = -DS3_PROXY_TCP_ONLY=1\n"+
+              "board_build.partitions = partitions.csv\n"+
               "board_upload.maximum_size = 5242880\n",1))
           PY
           python tests/ipv6/test_source_ipv6.py
