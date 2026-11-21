@@ -91,6 +91,14 @@ jobs:
             tests/p4/test_dns_probe.c -o /tmp/p4_node_probe
           /tmp/p4_node_probe
 
+      - name: Host node lifetime and revocation no-use-after-rekey matrix
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic             -Icomponents/s3_gateway_ap             components/s3_gateway_ap/s3_gateway_runtime_guard.c             tests/p4/test_runtime_guard.c -o /tmp/p4_runtime_guard
+          /tmp/p4_runtime_guard
+          grep -q 's3_gateway_runtime_guard_enter' components/s3_gateway_ap/s3_gateway_workers.c
+          grep -q 's3_gateway_runtime_guard_quiescent' components/s3_gateway_ap/s3_gateway_workers.c
+
       - name: Host WPA2 AP input-validation guard
         run: |
           set -euo pipefail
@@ -196,6 +204,7 @@ jobs:
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
           grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
           grep -q "s3_gateway_workers.c" build/compile_commands.json
+          grep -q "s3_gateway_runtime_guard.c" build/compile_commands.json
           grep -q "s3_gateway_workers_admin_arm_saved_ss2022" components/s3_gateway_ap/s3_gateway_workers.c
           grep -q "s3_gateway_session.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json

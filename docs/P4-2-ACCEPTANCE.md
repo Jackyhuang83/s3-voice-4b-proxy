@@ -40,6 +40,11 @@
 - 原 P1 `transparent_tcp_install_ap_output` 返回 void。现在利用固定来源的 P4-only overlay 添加只读已安装检测函数，要求 AP netif 的 IPv4 output 与 linkoutput 指针均确实指向透明 TCP Hook，才会设置 P4-2 `OUTPUT_HOOK_READY`。若部分或完全安装失败，一律拒绝授权，无 direct 回退。
 - 只校验已安装；仍需真实 4B 在关闭和 AP 重启时验证 Hook 原始指针恢复。
 
+## P4-2 新增节点生命周期租约测试
+- 先分离并复用单一的独立 C11 运行时租约 guard（可由 Linux CI 直接执行）。DNS UDP、DNS TCP、两个透明 relay worker 在使用任何节点配置之前获取 lease，在处理结束后释放；管理员撤销之后禁止新增 lease。新节点只在旧任务所有 lease 归零后才允许写入全局节点，防止内存/凭据混用。
+- Host 1000 次拒绝/允许/双 reader/撤销/拒绝新 reader/有界清空的确定性负向矩阵纳入原有 PR #15 CI。
+- 此项证明状态机和编译行为，不证明真实已连接上游 TLS socket 必然在 5 秒内退出；未收敛时继续保持 Fail-Closed，原机保护优先。
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。

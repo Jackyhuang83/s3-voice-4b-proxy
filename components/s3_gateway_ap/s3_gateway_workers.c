@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "esp_netif.h"
 #include "s3_gateway_workers.h"
+#include "s3_gateway_runtime_guard.h"
 #include "s3_gateway_dns_udp.h"
 #include "s3_gateway_dns_tcp.h"
 #include "s3_gateway_dns_probe.h"
@@ -45,6 +46,7 @@ static int active_clients[S3_GW_RELAYS] = {-1, -1};
 static owned_node_t node_storage;
 static volatile uint32_t configuration_in_progress;
 static volatile uint32_t revoke_requested;
+static s3_gateway_runtime_guard_t node_lifetime;
 
 static bool is_stopping(void)
 {
@@ -115,9 +117,11 @@ static void udp_worker(void *arg)
 {
     (void)arg;
     while (!is_stopping()) {
+        bool leased = s3_gateway_runtime_guard_enter(&node_lifetime);
         const s3_gateway_dns_upstream_t *up =
-            is_authorized() ? &node_storage.cfg : NULL;
+            leased && is_authorized() ? &node_storage.cfg : NULL;
         (void)s3_gateway_dns_udp_poll(udp_fd, owner_ap, up);
+        if (leased) s3_gateway_runtime_guard_leave(&node_lifetime);
         if (!is_authorized()) cancel_clients();
         vTaskDelay(pdMS_TO_TICKS(S3_GW_STOP_POLL_MS));
     }
@@ -128,9 +132,11 @@ static void tcp_dns_worker(void *arg)
 {
     (void)arg;
     while (!is_stopping()) {
+        bool leased = s3_gateway_runtime_guard_enter(&node_lifetime);
         const s3_gateway_dns_upstream_t *up =
-            is_authorized() ? &node_storage.cfg : NULL;
+            leased && is_authorized() ? &node_storage.cfg : NULL;
         (void)s3_gateway_dns_tcp_poll(dns_fd, owner_ap, up);
+        if (leased) s3_gateway_runtime_guard_leave(&node_lifetime);
         if (!is_authorized()) cancel_clients();
         vTaskDelay(pdMS_TO_TICKS(S3_GW_STOP_POLL_MS));
     }
@@ -146,10 +152,16 @@ static void tcp_relay_worker(void *arg)
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
+        if (!s3_gateway_runtime_guard_enter(&node_lifetime))
+            continue;
         uint32_t epoch = s3_gateway_session_epoch(s3_gateway_session_device());
-        bool ok = s3_gateway_tcp_accept_and_relay(
-            relay_fd, owner_ap, &node_storage.cfg, client_event,
-            (void *)(uintptr_t)slot);
+        bool ok = false;
+        if (is_authorized()) {
+            ok = s3_gateway_tcp_accept_and_relay(
+                relay_fd, owner_ap, &node_storage.cfg, client_event,
+                (void *)(uintptr_t)slot);
+        }
+        s3_gateway_runtime_guard_leave(&node_lifetime);
         /* Legitimate close/idle timeout is not automatically node failure;
          * revoked epochs must never authorize a newer connection.
          */
@@ -226,6 +238,20 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         if (active_clients[i] >= 0) busy = true;
     xSemaphoreGive(client_mutex);
     if (busy) goto release_configuration;
+    /* Revocation may have invalidated authorization, but a synchronous
+     * SSL/TCP/DNS operation may still reference the old credentials.
+     * No re-key until ALL transports relinquish their lifetime leases.
+     */
+    TickType_t waiting = pdMS_TO_TICKS(5000);
+    while (!s3_gateway_runtime_guard_quiescent(&node_lifetime) && waiting) {
+        TickType_t slice = waiting > pdMS_TO_TICKS(20) ?
+                           pdMS_TO_TICKS(20) : waiting;
+        if (!slice) slice = 1;
+        vTaskDelay(slice);
+        waiting -= slice;
+    }
+    if (!s3_gateway_runtime_guard_quiescent(&node_lifetime))
+        goto release_configuration;
     uint32_t epoch = s3_gateway_session_epoch(s3_gateway_session_device());
     if (!epoch ||
         (s3_gateway_session_flags(s3_gateway_session_device()) &
@@ -267,6 +293,7 @@ bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
         goto done;
     __atomic_store_n(&revoke_requested, 0u, __ATOMIC_RELEASE);
     __atomic_store_n(&authorized, 1u, __ATOMIC_RELEASE);
+    s3_gateway_runtime_guard_allow(&node_lifetime);
     transparent_tcp_set_enabled(true);
     /* An AP/STA loss may race the last ARM instructions. Never return
      * success or leave the interception gate raised for a revoked epoch.
@@ -308,6 +335,7 @@ bool s3_gateway_workers_admin_arm_saved_ss2022(void)
 }
 void s3_gateway_workers_revoke(void)
 {
+    s3_gateway_runtime_guard_revoke(&node_lifetime);
     __atomic_store_n(&authorized, 0u, __ATOMIC_RELEASE);
     s3_gateway_policy_event(s3_gateway_policy_device(), S3_GW_NODE_INVALIDATED);
     (void)s3_gateway_session_event(s3_gateway_session_device(),
@@ -339,7 +367,8 @@ bool s3_gateway_workers_drain(uint32_t timeout_ms)
         cancel_clients();
     }
     if (__atomic_load_n(&live_tasks, __ATOMIC_ACQUIRE) ||
-        __atomic_load_n(&configuration_in_progress, __ATOMIC_ACQUIRE))
+        __atomic_load_n(&configuration_in_progress, __ATOMIC_ACQUIRE) ||
+        !s3_gateway_runtime_guard_quiescent(&node_lifetime))
         return false; /* Never release AP or credentials during a probe. */
     if (udp_fd >= 0) close(udp_fd);
     if (dns_fd >= 0) close(dns_fd);
@@ -364,6 +393,7 @@ bool s3_gateway_workers_start_dns(esp_netif_t *ap)
     if (!s3_gateway_session_event(s3_gateway_session_device(),
                                   S3_SESSION_AP_READY))
         return false;
+    s3_gateway_runtime_guard_init(&node_lifetime);
     owner_ap = ap;
     udp_fd = s3_gateway_dns_udp_open(ap);
     dns_fd = s3_gateway_dns_tcp_listen(ap);
