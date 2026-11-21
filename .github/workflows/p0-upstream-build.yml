@@ -43,3 +43,91 @@ jobs:
         run: |
           echo "An upstream-only R8N16 build succeeded."
           echo "No S3-Voice integration, SS2022, TLS, IPv6 or 4B device was verified."
+
+  # R2-P0-2: copy of pinned NOAIC upstream test/build commands, untouched source.
+  noaic-original-firmware-and-tests:
+    name: NOAIC pinned v26.10.16 original IDF6.1 build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      IDF_COMMIT: fff9895c82d744c7237be8847347bdd1b07c6643
+      NOAIC_SHA: 0be56938acace1d083be746b3f6c60886259e81e
+      IDF_PY_BUILD_JOBS: '4'
+    steps:
+      - name: Inspect our R2 control files
+        uses: actions/checkout@v4
+      - name: Set temporary Espressif SDK paths at runner runtime
+        shell: bash
+        run: |
+          echo "IDF_PATH=$RUNNER_TEMP/r2-idf-6-1" >> "$GITHUB_ENV"
+          echo "IDF_TOOLS_PATH=$RUNNER_TEMP/r2-idf-tools" >> "$GITHUB_ENV"
+      - name: Original upstream exact SHA and license, no modification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init noaic
+          git -C noaic remote add origin https://github.com/noaic/esp32-socks5-gateway.git
+          git -C noaic fetch --depth 1 origin "$NOAIC_SHA"
+          git -C noaic checkout --detach FETCH_HEAD
+          test "$(git -C noaic rev-parse HEAD)" = "$NOAIC_SHA"
+          grep -qx 'MIT License' <(head -1 noaic/LICENSE)
+          grep -q 'idf_commit' noaic/patches/lwip-v6.1.json
+          test -s noaic/main/flow_table.c
+          test -s noaic/main/packet_rewrite.c
+          test -s noaic/main/socks_relay.c
+          test -s noaic/tests/flow_table_harness.c
+          echo "R2_UPSTREAM_NOAIC_PIN_OK=$NOAIC_SHA"
+      - name: Original upstream required dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget flex bison gperf python3 python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0-dev build-essential
+      - name: Pin author-tested ESP-IDF and install official ESP32-S3 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init "$IDF_PATH"
+          git -C "$IDF_PATH" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$IDF_PATH" fetch --depth 1 origin "$IDF_COMMIT"
+          git -C "$IDF_PATH" checkout --detach FETCH_HEAD
+          git -C "$IDF_PATH" submodule update --init --recursive --depth 1
+          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_COMMIT"
+          "$IDF_PATH/install.sh" esp32s3
+      - name: Author's own exact lwIP prepare and check (project-local only)
+        working-directory: noaic
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          python tools/prepare_lwip.py apply
+          python tools/prepare_lwip.py check
+          echo "R2_NOAIC_LOCAL_LWIP_PATCH_PASS"
+      - name: Author's own unmodified N16R8 firmware build and size
+        working-directory: noaic
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          idf.py -B build-release -D SDKCONFIG="$PWD/build-release/sdkconfig" build
+          idf.py -B build-release size
+          test -s build-release/esp32-socks5-gateway.bin
+          echo "R2_NOAIC_ORIGINAL_FIRMWARE_PASS"
+      - name: Author's own Python host regression and Node harnesses
+        working-directory: noaic
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          test_python="$(command -v python)"
+          PATH="/usr/bin:/bin:$PATH" "$test_python" -m unittest discover -s tests -v
+          node tests/management_feedback_harness.js
+          node tests/management_transport_harness.js
+          echo "R2_NOAIC_ORIGINAL_HOST_REGRESSION_PASS"
+      - name: Author's source preserved and scope truth
+        working-directory: noaic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$NOAIC_SHA"
+          git diff --exit-code HEAD -- main tests
+          echo 'Unmodified NOAIC upstream: source/host tests and ESP32-S3 original firmware only.'
+          echo 'NOT RUN: Xiaozhi voice coexistence, SS2022/VLESS, IPv6-only VPS, board hardware, OTA/recovery.'
