@@ -8,6 +8,10 @@
 #include "esp_netif.h"
 #include "s3_gateway_dns_processor.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 bool s3_gateway_workers_start_dns(esp_netif_t *ap);
 /* Bounded two-client TCP relay, encrypted and fail closed. Never auto-arm. */
 bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *node);
@@ -18,3 +22,7 @@ void s3_gateway_workers_revoke(void);
 void s3_gateway_workers_request_stop(void);
 /* Task-context only. False means AP netif must be retained locked off. */
 bool s3_gateway_workers_drain(uint32_t timeout_ms);
+
+#ifdef __cplusplus
+}
+#endif
