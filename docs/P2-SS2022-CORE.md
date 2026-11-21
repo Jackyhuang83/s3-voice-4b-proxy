@@ -43,4 +43,8 @@
 
 ## Acceptance record
 
-Check the P2-1 PR Checks for actual host vector results and MCU firmware compilation before marking P2-1 30% and merging. New errors stay in the same PR.
+- [PR #8](https://github.com/Jackyhuang83/s3-voice-4b-proxy/pull/8) merged (squash SHA `4864ea76800d220ba09c42c8210705d874a56bd8`).
+- [P2-1 Actions run](https://github.com/Jackyhuang83/s3-voice-4b-proxy/actions/runs/44876562792) **success**: vendored Git blob/hash and license audit, MbedTLS PSA host compilation, independent Python BLAKE3/AES-GCM request/payload vector tests, signed timestamp/salt binding, malformed authentication and fragmented response negative tests, maximum frame and error bounds.
+- Isolated SS2022 component built in pinned ESP32-S3 R8N16 PlatformIO/ESP-IDF firmware (success). It is compiled, **not selected or called** by transparent TCP routing yet.
+- Existing P0/P1 CI checks on PR #8 HEAD also completed with success.
+- **P2-1 acceptance = PASS (30% of P2)**; P2-2 TCP routing integration and P2-3 IPv4 server interoperability are **NOT RUN**; P4 real hardware **NOT RUN**.
