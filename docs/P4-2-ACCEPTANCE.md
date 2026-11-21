@@ -2,6 +2,11 @@
 
 **唯一 PR、40% 阶段权重；P4 总权重 15%。** P4-1 在 #14 完成源码/构建基线；P4-2 必须在这一 PR 内实现真正的可启停加密 TCP 网关，不能把尚未完成的网络运行时伪装成成功。
 
+## 2026-11-21 — S1/S2 增量实现（暂不验收）
+- S1：实际设备 P4-1 policy 新增 epoch session 双重授权门。保留历史 policy host 测试，并新增 stale-policy/epoch 负向矩阵。未完成 S2/S3 前，device session 未初始化，AP 仍无法启用。
+- S2 增量：新增 AP-only DNS-over-TCP :53 接口，复用已存在的加密 DNS processor 和 ESP-IDF socket；每连接至多处理一个 RFC 7766 帧，长度与 I/O 时限受限，未经过认证时仅可能 SERVFAIL。尚未接入 FreeRTOS 工作任务、节点联机认证或客户端取消机制。
+- 以上只属于代码、host 与 IDF CI 检查对象。S3 实机与完整 Fail-Closed 依旧 NOT RUN；禁止刷写/合并。
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。
