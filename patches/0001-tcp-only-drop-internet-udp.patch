@@ -1,0 +1,61 @@
+diff --git a/src/transparent_tcp.c b/src/transparent_tcp.c
+--- a/src/transparent_tcp.c
++++ b/src/transparent_tcp.c
+@@ -163,47 +163,54 @@
+     if (s_reinjecting)
+     {
+         return 0;
+     }
+-    if (input_netif != s_ap_netif || packet->tot_len < 40)
++    if (input_netif != s_ap_netif || packet->tot_len < 20)
+     {
+         return 0;
+     }
+     uint8_t header[60];
+-    if (pbuf_copy_partial(packet, header, 40, 0) != 40)
++    size_t  prefix_len = packet->tot_len >= 40 ? 40 : packet->tot_len;
++    if (pbuf_copy_partial(packet, header, prefix_len, 0) != prefix_len)
+     {
+         return 0;
+     }
+     uint8_t ihl = (header[0] & 0x0f) * 4;
+     if ((header[0] >> 4) != 4 || ihl < 20 || packet->tot_len < ihl)
+     {
+         return 0;
+     }
+-    if (ihl > 40 && pbuf_copy_partial(packet, header, ihl, 0) != ihl)
++    if (ihl > prefix_len && pbuf_copy_partial(packet, header, ihl, 0) != ihl)
+     {
+         return 0;
+     }
+     uint32_t client_ip, destination_ip;
+     memcpy(&client_ip, header + 12, sizeof(client_ip));
+     memcpy(&destination_ip, header + 16, sizeof(destination_ip));
+     uint32_t ap_ip = access_point_ipv4();
+     if (destination_ip == ap_ip)
+     {
+         return 0; /* Keep the portal, DNS, SOCKS listener, and router services local. */
+     }
+     if (header[9] == 17)
+     {
+         /* DHCP uses broadcast during lease acquisition/renewal, so keep it. */
+         if (packet->tot_len < ihl + 8)
+         {
+             return 0;
+         }
+         uint16_t source_port      = ((uint16_t)header[ihl] << 8) | header[ihl + 1];
+         uint16_t destination_port = ((uint16_t)header[ihl + 2] << 8) | header[ihl + 3];
+         if (source_port == 68 && destination_port == 67)
+         {
+             return 0;
+         }
++#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
++        /* AP-local DNS and DHCP were already allowed above. Block all other
++           Wi-Fi client UDP, including QUIC, before any XUDP flow is created. */
++        pbuf_free(packet);
++        return 1;
++#endif
+         if (is_link_local_multicast_or_broadcast(destination_ip))
+         {
+             uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+             if (now - s_last_udp_discovery_log_ms >= 5000)

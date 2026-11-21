@@ -1,0 +1,77 @@
+name: P1 TCP-only ingress patch build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tcp-only-build:
+    name: Pin upstream, apply UDP drop, compile R8N16
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO and clang-format
+        run: |
+          python -m pip install platformio==6.1.18
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Checkout pinned router source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = "dfb04b03154cfaee1d8615e4b8942dfe737abc5d"
+
+      - name: Apply small TCP-only patch with exact-context verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream apply --check ../patches/0001-tcp-only-drop-internet-udp.patch
+          git -C upstream apply ../patches/0001-tcp-only-drop-internet-udp.patch
+          python - <<'PY'
+          from pathlib import Path
+          cfg = Path('upstream/platformio.ini')
+          source = cfg.read_text()
+          anchor = '[env:esp32s3_r8n16]\n'
+          assert source.count(anchor) == 1, 'Upstream board configuration changed'
+          cfg.write_text(source.replace(anchor, anchor + 'build_flags = -DS3_PROXY_TCP_ONLY=1\n', 1))
+          PY
+
+      - name: Verify policy ordering and C code formatting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('upstream/src/transparent_tcp.c').read_text()
+          hook = s.split('int transparent_tcp_ip4_input(', 1)[1].split('static err_t transparent_tcp_ap_output(', 1)[0]
+          assert 'packet->tot_len < 20' in hook, 'minimum IPv4 header guard missing'
+          assert 'packet->tot_len >= 40 ? 40 : packet->tot_len' in hook
+          assert hook.index('destination_ip == ap_ip') < hook.index('source_port == 68 && destination_port == 67')
+          assert hook.index('source_port == 68 && destination_port == 67') < hook.index('#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY')
+          assert hook.index('pbuf_free(packet);\n        return 1;\n#endif') < hook.index('transparent_udp_create_or_get(')
+          assert 'build_flags = -DS3_PROXY_TCP_ONLY=1' in Path('upstream/platformio.ini').read_text()
+          print('Static source policy ordering passed (not packet-level hardware proof).')
+          PY
+          clang-format --dry-run --Werror --style=file upstream/src/transparent_tcp.c
+
+      - name: Compile modified upstream ESP32-S3 R8N16 firmware
+        working-directory: upstream
+        run: pio run -e esp32s3_r8n16
+
+      - name: Verification scope
+        run: |
+          echo 'Checked: patched upstream firmware compiles, and static UDP policy ordering.'
+          echo 'Not checked: actual AP/STA packets, TLS, SS2022, IPv6 or 4B voice/display.'
