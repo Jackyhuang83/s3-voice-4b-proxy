@@ -1,7 +1,7 @@
 diff --git a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
-@@ -3790,11 +3790,21 @@
+@@ -3790,11 +3790,23 @@
              (!transparent_mode_uses_vless() && dns_direct_query(packet, &bytes)))
          {
              sendto(sock, packet, bytes, 0, (struct sockaddr *)&client, len);
@@ -11,14 +11,16 @@ diff --git a/src/main.c b/src/main.c
 -        while (qend < bytes && packet[qend] != 0)
 +        }
 +#if defined(S3_PROXY_TCP_ONLY) && S3_PROXY_TCP_ONLY
-+        /* A tunnel failure must not pretend that every external DNS name
-+           points to the local AP/captive portal. Return DNS SERVFAIL without
-+           opening an unproxied upstream DNS socket. */
-+        packet[2] = 0x81;
-+        packet[3] = 0x82;
-+        packet[6] = packet[7] = packet[8] = packet[9] = packet[10] = packet[11] = 0;
-+        sendto(sock, packet, bytes, 0, (struct sockaddr *)&client, len);
-+        continue;
++        /* Preserve captive DNS for explicit configuration mode only. */
++        if (!s_configuration_mode)
++        {
++            /* A tunnel failure must not return the local AP as a fake remote IP. */
++            packet[2] = 0x81;
++            packet[3] = 0x82;
++            packet[6] = packet[7] = packet[8] = packet[9] = packet[10] = packet[11] = 0;
++            sendto(sock, packet, bytes, 0, (struct sockaddr *)&client, len);
++            continue;
++        }
 +#endif
 +        int qend = 12;
 +        while (qend < bytes && packet[qend] != 0)
