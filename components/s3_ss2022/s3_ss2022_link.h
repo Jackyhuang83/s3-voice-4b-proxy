@@ -10,7 +10,8 @@
 typedef void (*s3_ss2022_bandwidth_cb)(size_t bytes);
 typedef struct {
     uint32_t magic;
-    char server_ipv4[16];
+    /* v2: DNS/AAAA, IPv6 literal or IPv4 literal, max 253 bytes. */
+    char server_host[254];
     uint16_t server_port;
     uint8_t psk[16];
 } s3_ss2022_node_t;
