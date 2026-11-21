@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """P3-1 source-level TLS guarantees. Host TLS tests and firmware build separate."""
 from pathlib import Path
+import re
 src = Path("upstream/src/main.c").read_text()
 transport = Path("upstream/src/transport_tcp.c").read_text()
 cmake = Path("upstream/src/CMakeLists.txt").read_text()
@@ -30,9 +31,9 @@ assert "no plaintext VLESS/Mux" in src and "no unproxied UDP" in src
 assert 's3_vless_tls' in cmake
 
 # ESP-TLS: a valid CA trust bundle + SNI/hostname match is mandatory.
-assert ".crt_bundle_attach = esp_crt_bundle_attach" in tls
-assert ".common_name = host" in tls
-assert ".skip_common_name = false" in tls
+assert re.search(r"\.crt_bundle_attach\s*=\s*esp_crt_bundle_attach", tls)
+assert re.search(r"\.common_name\s*=\s*host\b", tls)
+assert re.search(r"\.skip_common_name\s*=\s*false\b", tls)
 assert "esp_tls_conn_new_sync(" in tls and "esp_tls_conn_destroy(" in tls
 assert "esp_tls_conn_write(" in tls and "esp_tls_conn_read(" in tls
 assert "response[0] == packet[0]" in tls and "response[1] == packet[1]" in tls
