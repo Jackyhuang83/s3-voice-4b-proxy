@@ -85,8 +85,11 @@ def main():
         '    if (!s3_gateway_ap_after_stop()) {\n'
         '        ESP_ERROR_CHECK(ESP_FAIL); /* Cannot reuse stale AP netif */\n'
         '    }\n', 1)
-    require("esp_wifi_init(" not in modified_sta,
-            "Refuse new Wi-Fi initialization")
+    # The ORIGINAL upstream file mentions esp_wifi_init() in a comment.
+    # Assert no new call/string was introduced rather than rejecting its
+    # existing documentation text.
+    require(modified_sta.count("esp_wifi_init(") == sta.count("esp_wifi_init("),
+            "Refuse added Wi-Fi initialization")
     (target / "wifi_station.cc").write_text(modified_sta)
     # The official v3.3.3 CMakeLists has one dependency list per IDF
     # major version. Add only our local AP component in both branches.
