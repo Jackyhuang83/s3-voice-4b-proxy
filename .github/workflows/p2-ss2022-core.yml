@@ -1,0 +1,96 @@
+name: P2-1 SS2022 portable core vectors and ESP-IDF compilation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ss2022-core:
+    name: Independent SIP022 vector tests + pinned R8N16 component build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned crypto and firmware tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmbedtls-dev
+          python -m pip install --disable-pip-version-check \
+            blake3==1.0.8 cryptography==46.0.3 platformio==6.1.18
+
+      - name: Check original source blobs and all license notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum components/s3_ss2022/{muse_ss2022.c,muse_ss2022.h}
+          test -s components/s3_ss2022/LICENSE-Apache-2.0
+          test -s components/s3_ss2022/NOTICE-upstream
+          test -s components/s3_ss2022/third_party/blake3/LICENSE_A2
+          test -s components/s3_ss2022/third_party/blake3/LICENSE_A2LLVM
+          test -s components/s3_ss2022/third_party/blake3/LICENSE_CC0
+          python tools/check_ss2022_vendor.py
+
+      - name: Compile imported production C against host MbedTLS PSA
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512 -DBLAKE3_USE_NEON=0 \
+            -Icomponents/s3_ss2022 \
+            components/s3_ss2022/muse_ss2022.c \
+            components/s3_ss2022/third_party/blake3/blake3.c \
+            components/s3_ss2022/third_party/blake3/blake3_dispatch.c \
+            components/s3_ss2022/third_party/blake3/blake3_portable.c \
+            tests/ss2022/ss2022_probe.c -lmbedcrypto \
+            -o /tmp/s3_ss2022_probe
+          ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+            /tmp/s3_ss2022_probe negative
+          SS2022_PROBE=/tmp/s3_ss2022_probe \
+            python tests/ss2022/test_vectors.py
+
+      - name: Retrieve exact pinned transparent router source
+        run: |
+          git clone https://github.com/yanxke/ESP32-VPN-Transparent-Proxy-Router.git upstream
+          git -C upstream checkout --detach dfb04b03154cfaee1d8615e4b8942dfe737abc5d
+          test "$(git -C upstream rev-parse HEAD)" = "dfb04b03154cfaee1d8615e4b8942dfe737abc5d"
+
+      - name: Add isolated SS2022 component to tested P1 firmware (not yet used)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in patches/0001-tcp-only-drop-internet-udp.patch \
+                   patches/0002-tcp-only-enforce-no-direct-route.patch \
+                   patches/0003-validate-and-fail-closed-ipv4-input.patch \
+                   patches/0004-dns-servfail-on-tunnel-outage.patch; do
+            git -C upstream apply --check "../$p"
+            git -C upstream apply "../$p"
+          done
+          mkdir -p upstream/components
+          cp -R components/s3_ss2022 upstream/components/s3_ss2022
+          python - <<'PY'
+          from pathlib import Path
+          cfg=Path("upstream/platformio.ini")
+          text=cfg.read_text()
+          anchor="[env:esp32s3_r8n16]\n"
+          assert text.count(anchor)==1
+          cfg.write_text(text.replace(anchor,anchor+"build_flags = -DS3_PROXY_TCP_ONLY=1\n",1))
+          PY
+
+      - name: Compile ESP32-S3 R8N16 including isolated SS2022 protocol core
+        working-directory: upstream
+        run: pio run -e esp32s3_r8n16
+
+      - name: Verification boundary
+        run: |
+          echo "PASS here = SS2022 core unit/vector tests and unused component compilation."
+          echo "NOT RUN = SS2022 transparent TCP integration, real VPS, IPv6, 4B voice/display hardware."
