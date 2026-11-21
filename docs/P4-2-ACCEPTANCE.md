@@ -36,6 +36,10 @@
 - 管理员异步操作互斥；旧活动 TCP 客户端未退出不得替换节点密钥；失败清除策略并拒绝直连。
 - **仍缺完整设备 UI/串口授权入口、上游 TLS socket 在所有取消边界的有界回收证据、客户端真实互联网互通与原版备份。不得宣称实机就绪。**
 
+## G2/G3 钩子安装回读（待 CI）
+- 原 P1 `transparent_tcp_install_ap_output` 返回 void。现在利用固定来源的 P4-only overlay 添加只读已安装检测函数，要求 AP netif 的 IPv4 output 与 linkoutput 指针均确实指向透明 TCP Hook，才会设置 P4-2 `OUTPUT_HOOK_READY`。若部分或完全安装失败，一律拒绝授权，无 direct 回退。
+- 只校验已安装；仍需真实 4B 在关闭和 AP 重启时验证 Hook 原始指针恢复。
+
 ## 任务顺序与依赖
 
 1. **S1：可证明撤销的监督状态机（前置安全门）** — 不允许自动 ARM，节点健康必须来自真实认证 SS2022/VLESS 回合；失效、STA 掉线、AP 停止、配网切换均撤销旧 token；旧任务返回后不能恢复转发。源侧与主机负向矩阵、ESP-IDF 6.1 编译 PASS。

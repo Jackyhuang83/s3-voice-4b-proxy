@@ -160,6 +160,7 @@ jobs:
           grep -Fq "s_enabled = false;" voice/components/s3_tcp_guard/transparent_tcp.c
           grep -Fq "void transparent_tcp_uninstall_ap_output(void)" voice/components/s3_tcp_guard/transparent_tcp.c
           grep -Fq "bool transparent_tcp_is_reinjecting(void)" voice/components/s3_tcp_guard/transparent_tcp.c
+          grep -Fq "bool transparent_tcp_ap_output_installed(void)" voice/components/s3_tcp_guard/transparent_tcp.c
 
       - name: Pin the original Xiaozhi Wi-Fi owner and prevent second NVS erase
         run: |

@@ -202,7 +202,7 @@ static esp_err_t install_output(void *context)
      * until both session and legacy policy authorize it.
      */
     transparent_tcp_install_ap_output();
-    return ESP_OK;
+    return transparent_tcp_ap_output_installed() ? ESP_OK : ESP_FAIL;
 }
 bool s3_gateway_workers_admin_arm(const s3_gateway_dns_upstream_t *src)
 {
