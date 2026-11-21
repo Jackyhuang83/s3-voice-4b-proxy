@@ -303,6 +303,32 @@ gateway worker, never an audio/Wi-Fi callback. Full pipeline smoke
 tests, AP output rewriter installation, and fail-closed teardown are
 not yet completed.
 
+## Optional single-owner WPA2 APSTA lifecycle source integration
+
+The isolated 4B image now overlays only pinned `esp-wifi-connect 3.3.3`
+`WifiStation::Start` and `Stop` with exact-context guards. No additional
+`esp_wifi_init`, start or stop calls are created. On boot, when
+`s3_proxy_ap` NVS namespace lacks an explicitly enabled/valid
+SSID and 12+ character WPA2 PSK, **the original STA-only Xiaozhi
+startup is preserved**.
+
+When explicitly configured, AP netif is created and WPA2 configuration
+applied in APSTA mode *before* the original WifiStation invokes
+`esp_wifi_start`, so no transient open hotspot is broadcast. The AP
+input filter is bound but all external routing/interception remains
+disabled; no DNS/TCP workers run. The existing Wi-Fi owner stops the
+driver before AP output callbacks and hook are restored/destroyed on
+the lwIP core thread via official `esp_netif_tcpip_exec`.
+A teardown failure aborts rather than allowing the original
+config portal to reuse an unsafe AP netif. The original voice STA
+and provisioning AP event callbacks remain the only Wi-Fi lifecycle
+owners. No credentials or VPS endpoints are committed.
+
+**This is NOT a functional/authorized proxy gateway yet.** AP-local
+encrypted DNS listener, bounded TCP workers, manual admin arm, relay
+ready checks, recovery and real-device voice/network tests are still
+required before P4-1 approval. NVS encryption is planned for P4-3.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.

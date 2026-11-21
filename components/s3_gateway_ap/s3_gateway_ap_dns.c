@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 #include "s3_gateway_ap_dns.h"
+/* ESP-IDF 6.1 softap_sta example defines its own offer bit (0x02). */
+#define S3_DHCPS_OFFER_DNS 0x02u
 
 esp_err_t s3_gateway_ap_offer_local_dns(esp_netif_t *gateway_ap)
 {
@@ -16,13 +18,13 @@ esp_err_t s3_gateway_ap_offer_local_dns(esp_netif_t *gateway_ap)
     if (result != ESP_OK) return result;
     if (ip.ip.addr == 0) return ESP_ERR_INVALID_STATE;
     esp_netif_dns_info_t dns = {0};
-    dns.ip.type = IPADDR_TYPE_V4;
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
     dns.ip.u_addr.ip4.addr = ip.ip.addr;
     /* A failure after stopping DHCP leaves leases unavailable: fail closed. */
     result = esp_netif_dhcps_stop(gateway_ap);
     if (result != ESP_OK && result != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED)
         return result;
-    uint8_t offer = DHCPS_OFFER_DNS;
+    uint8_t offer = S3_DHCPS_OFFER_DNS;
     result = esp_netif_dhcps_option(gateway_ap, ESP_NETIF_OP_SET,
                                   ESP_NETIF_DOMAIN_NAME_SERVER, &offer,
                                   sizeof(offer));

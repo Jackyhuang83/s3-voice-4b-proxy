@@ -137,6 +137,9 @@ jobs:
           test "$(git -C wifi-source rev-parse HEAD)" = 77095063d77e7705f68e95005c43ed73582233ce
           ! grep -q 'nvs_flash_erase()' voice/components/78__esp-wifi-connect/wifi_manager.cc
           grep -q 'refusing automatic erase' voice/components/78__esp-wifi-connect/wifi_manager.cc
+          grep -q 's3_gateway_ap_pre_start' voice/components/78__esp-wifi-connect/wifi_station.cc
+          grep -q 's3_gateway_ap_after_stop' voice/components/78__esp-wifi-connect/wifi_station.cc
+          test "$(grep -c 'esp_wifi_start();' voice/components/78__esp-wifi-connect/wifi_station.cc)" = 1
 
       - name: Compile 4B Xiaozhi voice + SS2022/VLESS + TCP flow engine (inactive)
         working-directory: voice
@@ -155,6 +158,7 @@ jobs:
           grep -q "s3_gateway_dns_udp.c" build/compile_commands.json
           grep -q "s3_gateway_tcp_server.c" build/compile_commands.json
           grep -q "s3_gateway_ap_dns.c" build/compile_commands.json
+          grep -q "s3_gateway_ap_runtime.c" build/compile_commands.json
           grep -q "ESP_IDF_LWIP_HOOK_FILENAME" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json
           grep -q "s3_gateway_lwip_hook.h" build/compile_commands.json

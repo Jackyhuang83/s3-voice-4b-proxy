@@ -1,6 +1,6 @@
 # AP configuration and DHCP-DNS helper only. Not a second Wi-Fi owner.
 idf_component_register(
-    SRCS "s3_gateway_ap_config.c" "s3_gateway_ap_dns.c"
+    SRCS "s3_gateway_ap_config.c" "s3_gateway_ap_dns.c" "s3_gateway_ap_runtime.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_netif
+    REQUIRES esp_netif esp_wifi nvs_flash lwip s3_gateway_policy s3_tcp_guard
 )

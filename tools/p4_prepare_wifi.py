@@ -57,8 +57,48 @@ def main():
     manager.write_text(mgr.replace(NVS_ERASE, NVS_REFUSE, 1))
     require("nvs_flash_erase()" not in manager.read_text(),
             "Automatic NVS erase still reachable in Wi-Fi manager")
-    require((target / "wifi_station.cc").read_text() == sta,
-            "Wi-Fi STA source modified without explicit review")
+    # Keep all original station management; only insert AP startup BEFORE
+    # the single owner esp_wifi_start(). An APSTA mode change after Wi-Fi
+    # start would briefly broadcast an unconfigured AP.
+    header_anchor = '#include "wifi_station.h"\n'
+    sta_start = (
+        '    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));\n'
+        '    ESP_ERROR_CHECK(esp_wifi_start());\n'
+    )
+    sta_stop = '    esp_wifi_stop();\n'
+    require(sta.count(header_anchor) == 1 and
+            sta.count(sta_start) == 1 and sta.count(sta_stop) == 1,
+            "Pinned Wi-Fi station start/stop signature drifted")
+    modified_sta = sta.replace(header_anchor,
+        header_anchor + '#include "s3_gateway_ap_runtime.h"\n', 1)
+    modified_sta = modified_sta.replace(sta_start,
+        '    if (!s3_gateway_ap_pre_start()) {\n'
+        '        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));\n'
+        '    }\n'
+        '    ESP_ERROR_CHECK(esp_wifi_start());\n'
+        '    if (!s3_gateway_ap_after_start()) {\n'
+        '        ESP_ERROR_CHECK(ESP_FAIL); /* DHCP failure: no service */\n'
+        '    }\n', 1)
+    modified_sta = modified_sta.replace(sta_stop,
+        '    s3_gateway_ap_before_stop();\n'
+        '    esp_wifi_stop();\n'
+        '    if (!s3_gateway_ap_after_stop()) {\n'
+        '        ESP_ERROR_CHECK(ESP_FAIL); /* Cannot reuse stale AP netif */\n'
+        '    }\n', 1)
+    require("esp_wifi_init(" not in modified_sta,
+            "Refuse new Wi-Fi initialization")
+    (target / "wifi_station.cc").write_text(modified_sta)
+    # The official v3.3.3 CMakeLists has one dependency list per IDF
+    # major version. Add only our local AP component in both branches.
+    component_cmake = target / "CMakeLists.txt"
+    old_cmake = component_cmake.read_text()
+    dep = '"esp_wifi" "nvs_flash"'
+    require(old_cmake.count(dep) == 2,
+            "Pinned Wi-Fi component dependency lists drifted")
+    component_cmake.write_text(old_cmake.replace(
+        dep, dep + ' "s3_gateway_ap"'))
+    print("P4_WIFI_OWNER_APSTA_PRESTART: original Wi-Fi start/stop only")
+
     print("P4_WIFI_OWNER_PINNED 78/esp-wifi-connect 3.3.3 SHA " + sha)
     print("P4_WIFI_NVS_AUTO_ERASE_BLOCKED original STA/config AP preserved")
     print("NO APSTA activation or second Wi-Fi driver initialization")
