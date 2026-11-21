@@ -93,7 +93,7 @@ jobs:
           gcc -std=gnu11 -O1 -g -fno-omit-frame-pointer \
             -fsanitize=address,undefined \
             -DS3_PROXY_TCP_ONLY=1 \
-            -Itests/host/stubs -Iupstream/src -include tests/host/stubs/compat.h \
+            -Itests/host/stubs -Iupstream/src -Iupstream/include -include tests/host/stubs/compat.h \
             upstream/src/transparent_tcp.c tests/host/ipv4_hook_test.c \
             -o /tmp/s3_proxy_ipv4_hook_test
           ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
