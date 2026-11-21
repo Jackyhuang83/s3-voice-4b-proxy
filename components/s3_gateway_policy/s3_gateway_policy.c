@@ -7,6 +7,14 @@
 static s3_gateway_policy_t device_policy = S3_GATEWAY_POLICY_INIT;
 s3_gateway_policy_t *s3_gateway_policy_device(void) { return &device_policy; }
 
+bool s3_gateway_dhcp_destination_allowed(uint32_t dst,
+                                         uint32_t ap_ip, uint32_t netmask)
+{
+    if (!ap_ip || !netmask) return false;
+    return dst == UINT32_MAX || dst == ap_ip ||
+           dst == ((ap_ip & netmask) | ~netmask);
+}
+
 #define S3_F_STA    (1u << 0)
 #define S3_F_NODE   (1u << 1)
 #define S3_F_RELAY  (1u << 2)

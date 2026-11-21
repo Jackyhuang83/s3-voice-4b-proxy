@@ -57,6 +57,13 @@ int s3_gateway_ip4_input(struct pbuf *packet, struct netif *netif) {
         sport = (uint16_t)(((unsigned)ports[0] << 8) | ports[1]);
         dport = (uint16_t)(((unsigned)ports[2] << 8) | ports[3]);
     }
+    /* DHCP client port 68->67 is NOT an exemption for arbitrary WAN IP.
+     * Only the AP interface address or broadcast destinations are local. */
+    if (proto == 17 && sport == 68 && dport == 67 &&
+        !s3_gateway_dhcp_destination_allowed(dest,
+             ip4_addr_get_u32(netif_ip4_addr(ap)),
+             ip4_addr_get_u32(netif_ip4_netmask(ap))))
+        return drop(packet);
     s3_gateway_packet_action_t action = s3_gateway_packet_decide(
         s3_gateway_policy_device(), true, local, proto, sport, dport);
     if (action == S3_GW_PACKET_LOCAL) return 0; /* Local DHCP/DNS. */

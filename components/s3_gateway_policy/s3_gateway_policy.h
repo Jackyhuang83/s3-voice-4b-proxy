@@ -44,6 +44,10 @@ struct netif;
 void s3_gateway_lwip_bind_ap(struct netif *ap);
 void s3_gateway_lwip_unbind_ap(void);
 struct netif *s3_gateway_lwip_current_ap(void);
+/* DHCP input may be passed to lwIP only if its destination is AP-local
+ * or a broadcast. All three addresses use lwIP's raw IPv4 u32 encoding. */
+bool s3_gateway_dhcp_destination_allowed(uint32_t dst,
+                                         uint32_t ap_ip, uint32_t netmask);
 void s3_gateway_policy_init(s3_gateway_policy_t *policy);
 void s3_gateway_policy_event(s3_gateway_policy_t *policy, s3_gateway_event_t event);
 bool s3_gateway_policy_ready(const s3_gateway_policy_t *policy);

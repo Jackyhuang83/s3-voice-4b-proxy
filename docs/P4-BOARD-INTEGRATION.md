@@ -339,6 +339,14 @@ calling `ESP_ERROR_CHECK(ESP_FAIL)` during optional AP setup, which
 could otherwise reset on every boot while an invalid NVS flag persists.
 A teardown failure still refuses to reuse a stale AP netif.
 
+### DHCP port exception constrained to AP-local destinations
+
+The AP-only IPv4 Hook now limits UDP 68→67 to DHCP traffic
+addressed to the AP, subnet broadcast or 255.255.255.255.
+An external destination with the same port numbers is dropped,
+even if a later image accidentally enables forwarding. The
+host C11 negative matrix includes these addresses.
+
 ## Outstanding P4-1 implementation gates
 
 - [ ] **Compile**: full Xiaozhi 4B build with both transport libraries under its required IDF version.
