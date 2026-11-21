@@ -396,7 +396,10 @@ bool s3_ss2022_dns_query(const s3_ss2022_node_t *node, const char *resolver,
     bool ok = session_write(&s, request, *length + 2);
     wipe(request, sizeof(request));
     s3_dns_output_t out = {0};
-    for (int attempts = 0; ok && attempts < 5; ++attempts) {
+    /* TCP can split a 59-byte authenticated header into arbitrarily many reads.
+       Bound by BOTH a wall-clock deadline and a fragment count, not 5 recv calls. */
+    time_t deadline = time(NULL) + 15;
+    for (int fragments = 0; ok && fragments < 256 && time(NULL) <= deadline; ++fragments) {
         ssize_t n = recv(s.fd, s.io, S3_SS2022_IO_SIZE, 0);
         if (n <= 0 || !ss2022_feed(s.rx, s.io, (size_t)n, (uint64_t)time(NULL),
                                    dns_emit, &out)) {
