@@ -1,0 +1,89 @@
+name: S3-Voice-AI A05 generic OpenAI-compatible provider
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a05-*.sh'
+      - 'tools/ai/a05-*.py'
+      - 'tests/ai/a05_*.py'
+      - 'docs/ai/A05-GENERIC-GPT.md'
+      - '.github/workflows/ai-a05-generic.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ai/a05-*.sh'
+      - 'tools/ai/a05-*.py'
+      - 'tests/ai/a05_*.py'
+      - 'docs/ai/A05-GENERIC-GPT.md'
+      - '.github/workflows/ai-a05-generic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax, stdlib Python syntax
+        run: |
+          bash -n tools/ai/a05-generic.sh
+          python3 -m py_compile tools/ai/a05-config.py tests/ai/a05_provider_contract.py tests/ai/a05_config_test.py
+      - name: Unit test private YAML transformation with fake credential
+        run: python3 tests/ai/a05_config_test.py
+      - name: Enforce no hardcoded real key or public inbound port edits
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('tools/ai/a05-generic.sh').read_text()
+          assert "One short LIVE API call may incur provider charges. Type YES" in s
+          assert "python3 data/.a05-provider-smoke.tmp.py live" in s
+          assert 'bash "$SRC/tools/ai/a04-edge.sh" local' in s
+          assert "iptables" not in s and "ufw " not in s
+          assert "docker compose down" not in s
+          assert "docker system prune" not in s
+          assert "set +x" in s and "umask 077" in s
+          print("A05_STATIC_PASS: consent, API credential file, no firewall/other-project changes")
+          PY
+
+  actual-upstream-provider:
+    needs: static-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pinned official XiaoZhi v0.9.8 image in isolated CI runner
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Test official LLMProvider with local fake OpenAI Chat Completions SSE
+        run: |
+          sudo cp tests/ai/a05_provider_contract.py /opt/s3-voice-ai/data/.a05-ci-provider.py
+          sudo chmod 600 /opt/s3-voice-ai/data/.a05-ci-provider.py
+          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
+            python3 data/.a05-ci-provider.py mock
+      - name: Test replacing and restoring ONLY LLM selection using official server YAML parser
+        run: |
+          sudo cp /opt/s3-voice-ai/data/.config.yaml /opt/s3-voice-ai/data/.a05-ci-original.yaml
+          printf 'a05-fake-test-token' | sudo python3 tools/ai/a05-config.py credentials \
+            --output /opt/s3-voice-ai/data/.a05-ci-credential.json \
+            --base-url https://api.example.com/v1 --model a05-ci-model
+          sudo python3 tools/ai/a05-config.py apply \
+            --config /opt/s3-voice-ai/data/.config.yaml \
+            --credentials /opt/s3-voice-ai/data/.a05-ci-credential.json
+          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server python3 -c "
+          import yaml
+          x=yaml.safe_load(open('data/.config.yaml'))
+          assert x['selected_module']['LLM']=='GenericGPTLLM'
+          assert x['LLM']['GenericGPTLLM']['type']=='openai'
+          assert x['LLM']['GenericGPTLLM']['model_name']=='a05-ci-model'
+          assert x['selected_module']['ASR']=='OpenaiASR'
+          assert x['server']['websocket']=='ws://127.0.0.1:18000/xiaozhi/v1/'
+          print('A05_CONFIG_CONTAINER_PASS: official YAML parser and existing server settings preserved')"
+          sudo cp /opt/s3-voice-ai/data/.a05-ci-original.yaml /opt/s3-voice-ai/data/.config.yaml
+          sudo bash tools/ai/a03-server.sh status
+      - name: Stop only ephemeral A03 container on CI runner
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback || true
+          fi
