@@ -10,7 +10,8 @@ if test "$#" -gt 0; then ACTION="$1"; fi
 ROOT=/opt/s3-voice-ai
 BACKUP=/var/backups/s3-voice-ai
 SOURCE="$(cd "$(dirname "$0")/../.." && pwd)"
-IMAGE_TAG=ghcr.io/xinnan-tech/xiaozhi-esp32-server:server_0.9.8
+# Official tag server_0.9.8; digest verified from upstream GitHub Package Versions.
+IMAGE_PIN=ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:cd41415f887410080dc2424b5faef651373c72fba37b3979d28e90ee548181af
 PROJECT=s3-voice-ai
 
 die() { printf 'A03_BLOCKED: %s\n' "$*" >&2; exit 1; }
@@ -74,12 +75,12 @@ install() {
   test "$(id -u)" = 0 || die "run install as root to protect credentials"
   preflight
   previous="$(known_containers)"
-  # Resolve the officially tagged release image once; lock to immutable digest.
-  # Official tagged build: upstream .github/workflows/docker-image.yml.
-  docker pull "$IMAGE_TAG" >/dev/null
-  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE_TAG" |
-    grep -E '^ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:[0-9a-f]{64}$' | head -n 1 || true)"
-  test -n "$digest" || die "cannot verify GHCR digest, refusing floating tag deployment"
+  # Use the published v0.9.8 digest directly; fail closed on a missing/changed blob.
+  # Never pull server_latest or resolve a mutable tag at installation time.
+  docker pull "$IMAGE_PIN" >/dev/null
+  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE_PIN" |
+    grep -Fx "$IMAGE_PIN" | head -n 1 || true)"
+  test "$digest" = "$IMAGE_PIN" || die "upstream pinned image digest validation failed"
   test ! -e "$ROOT" || die "$ROOT changed during preflight"
   mkdir -p "$ROOT/data" "$BACKUP"
   chmod 700 "$ROOT" "$ROOT/data" "$BACKUP"
