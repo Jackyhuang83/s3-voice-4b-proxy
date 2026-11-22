@@ -76,11 +76,11 @@ After reviewing the script in the PR and from the exact reviewed Git commit, run
 
 ~~~bash
 curl -fsSLo /tmp/s3-voice-a02-readonly.sh \
-  https://raw.githubusercontent.com/Jackyhuang83/s3-voice-4b-proxy/main/tools/ai/a02_vps_inventory.sh
+  https://raw.githubusercontent.com/Jackyhuang83/s3-voice-4b-proxy/ai/p0-a02-vps-isolation-20261122/tools/ai/a02_vps_inventory.sh
 bash -n /tmp/s3-voice-a02-readonly.sh && bash /tmp/s3-voice-a02-readonly.sh
 ~~~
 
-The downloaded script creates a temporary local file but does not modify existing services. Replace moving /main with exact reviewed Git SHA when collecting the final attestation. Results may be shared without API credentials. If Docker is inaccessible, report inaccessible and do not ask user to run dangerous privileges. A no-listener snapshot is **not a guaranteed available port**; A03 checks binding again.
+The downloaded script creates a temporary local file but does not modify existing services. The command above reads the A02 PR branch; after final CI, pin the URL to its exact reviewed Git commit SHA for formal attestation. Do not substitute moving main until the PR is actually merged. Results may be shared without API credentials. If Docker is inaccessible, report inaccessible and do not ask user to run dangerous privileges. A no-listener snapshot is **not a guaranteed available port**; A03 checks binding again.
 
 **A02 host-evidence exit checklist (not yet fulfilled):**
 - Target actually identifies as Debian 13 with known architecture; adequate idle RAM and disk for a conservative cloud-ASR baseline.
