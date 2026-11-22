@@ -64,10 +64,15 @@ jobs:
           sudo python3 tools/ai/a05-config.py apply \
             --config /opt/s3-voice-ai/data/.config.yaml \
             --credentials /opt/s3-voice-ai/data/.a07-ci-dummy.json
+          sudo touch /opt/s3-voice-ai/a05-backup.path
+          sudo chmod 600 /opt/s3-voice-ai/a05-backup.path
+          # Real A06 previously downloaded Vosk on the target VPS. CI must
+          # materialize the SAME official model before an A07 server restart.
+          sudo bash tools/ai/a06-voice.sh prepare
           sudo python3 tools/ai/a06-config.py apply \
             --config /opt/s3-voice-ai/data/.config.yaml
-          sudo touch /opt/s3-voice-ai/a05-backup.path /opt/s3-voice-ai/a06-backup.path
-          sudo chmod 600 /opt/s3-voice-ai/a05-backup.path /opt/s3-voice-ai/a06-backup.path
+          sudo touch /opt/s3-voice-ai/a06-backup.path
+          sudo chmod 600 /opt/s3-voice-ai/a06-backup.path
       - name: Stage private enrollment URL; existing A04 gate remains valid
         run: |
           sudo bash tools/ai/a07-device.sh stage
