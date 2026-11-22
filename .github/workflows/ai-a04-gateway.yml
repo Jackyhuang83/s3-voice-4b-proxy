@@ -86,6 +86,11 @@ jobs:
         run: sudo bash tools/ai/a03-server.sh install
       - name: Stage official Caddy bridge gate, run OTA/WS identity admission
         run: sudo bash tools/ai/a04-edge.sh stage
+      - name: Print CI-only gateway startup diagnostics on failure
+        if: failure()
+        run: |
+          sudo docker ps -a --filter name=s3-voice-ai-gateway --format 'table {{.Names}}\t{{.Status}}'
+          sudo docker logs s3-voice-ai-gateway --tail 60 || true
       - name: Check local gateway without secret leaks
         run: sudo bash tools/ai/a04-edge.sh status
       - name: Test A04-only rollback, and restored A03 OTA
