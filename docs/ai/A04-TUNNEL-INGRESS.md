@@ -36,6 +36,8 @@ Caddy site has NO general-purpose health path, OTA binary download path or publi
 | 7844 | VPS outbound | UDP (QUIC) or TCP (HTTP/2) | For dedicated Cloudflare Tunnel; check only if VPS restricts outbound |
 | 80/443/8080/12333/28888 | Existing services | existing | Do not modify or replace |
 
+**Verified upstream-image compatibility detail:** The official Caddy 2.11.7 binary is marked with the Linux `cap_net_bind_service=+ep` file capability. A test with every container capability dropped caused `exec /usr/bin/caddy: operation not permitted`. The gateway therefore drops all default capabilities then adds back **only** `NET_BIND_SERVICE`, retaining `no-new-privileges`, non-root UID, read-only filesystem and port 8080. The separate cloudflared connector adds no capabilities.
+
 Caddy and cloudflared share A04's **front** Docker bridge; only Caddy joins existing `s3-voice-ai_default` backend network. No host networking. The cloudflared origin URL in Cloudflare dashboard must be **`http://gateway:8080`**, not localhost and not the HomeSphere Caddy port, because the cloudflared process is in its own Docker bridge. The host mapping 127.0.0.1:18080 is for local tests only.
 
 ## 4. Implementation / commands and evidence boundaries
