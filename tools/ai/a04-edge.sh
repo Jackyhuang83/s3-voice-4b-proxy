@@ -93,6 +93,15 @@ PY
   chmod 600 "$EDGE/.env"
   edge_compose config -q
   edge_compose up -d --no-deps gateway >/dev/null
+  # Docker reports "Started" before Caddy has bound its listening socket.
+  # Probe the default-deny route first; do not change A03 until gate is healthy.
+  gate_ready=0
+  for n in $(seq 1 45); do
+    http_code="$(curl --noproxy '*' -s --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ || true)"
+    if test "$http_code" = 403; then gate_ready=1; break; fi
+    sleep 1
+  done
+  test "$gate_ready" = 1 || die "Caddy gateway did not become ready; CI logs / local private logs are needed"
   python3 - "$A03/data/.config.yaml" "$EDGE/identity.json" <<'PY'
 import json,sys
 from pathlib import Path
