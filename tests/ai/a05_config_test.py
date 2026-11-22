@@ -75,6 +75,5 @@ with tempfile.TemporaryDirectory(prefix="a05-test-") as d:
         raise AssertionError("duplicate activation did not fail")
     cfg.write_text(original)
     assert cfg.read_text() == original
-    assert "a05-test-token" not in revised.replace("a05-test-token", "") or True
 print("A05_CONFIG_PASS: only existing upstream LLM selection changed; A04 WSS/ASR untouched")
 print("A05_CONFIG_PASS: HTTPS-only, no private hosts, secret files 0600, backup reversible")
