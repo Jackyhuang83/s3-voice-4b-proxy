@@ -29,7 +29,10 @@ server_restart() {
     if curl --noproxy '*' -fsS --max-time 2 http://127.0.0.1:18003/xiaozhi/ota/ >/dev/null 2>&1; then ready=1; break; fi
     sleep 1
   done
-  test "$ready" = 1 || die "original A03 OTA health did not recover"
+  if test "$ready" != 1; then
+    printf 'A07_BLOCKED: original A03 OTA health did not recover; invoking scoped recovery\n' >&2
+    return 1
+  fi
 }
 smoke() { python3 "$SMOKE" --identity "$IDENTITY" --origin http://127.0.0.1:18080 >/dev/null; }
 status() {
