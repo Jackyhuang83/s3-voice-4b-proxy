@@ -14,32 +14,32 @@ def require_endpoint(base_url, model, key):
     try:
         p = urlsplit(base_url)
     except ValueError:
-        raise ValueError("invalid URL") from None
+        raise ValueError("base_url: malformed URL") from None
     if p.scheme != "https" or not p.hostname or p.username or p.password:
-        raise ValueError("provider base_url must use HTTPS and have a valid hostname")
+        raise ValueError("base_url: must start with https:// and include a valid host (copy only the URL)")
     if p.query or p.fragment or p.path.endswith("/chat/completions"):
-        raise ValueError("use the API base URL, not the final completion endpoint")
+        raise ValueError("base_url: remove query/fragment or /chat/completions; use the API base URL")
     if p.hostname.lower() == "localhost" or p.hostname.lower().endswith(".local"):
-        raise ValueError("local/insecure provider hosts are unsupported")
+        raise ValueError("base_url: localhost/local network host is unsupported")
     try:
         addr = ipaddress.ip_address(p.hostname)
     except ValueError:
         pass
     else:
         if not addr.is_global:
-            raise ValueError("private or reserved provider address refused")
+            raise ValueError("base_url: private or reserved IP is unsupported")
     try:
         port = p.port
     except ValueError:
-        raise ValueError("invalid port") from None
+        raise ValueError("base_url: invalid port") from None
     if port is not None and port != 443:
-        raise ValueError("only HTTPS default port 443 supported")
+        raise ValueError("base_url: only HTTPS port 443 is supported")
     if len(base_url) > 400 or any(ord(c) < 33 for c in base_url):
-        raise ValueError("invalid base URL characters")
+        raise ValueError("base_url: invalid length, whitespace, or quotation marks; paste the value only")
     if not re.fullmatch(r"[A-Za-z0-9._:/@+-]{1,128}", model):
-        raise ValueError("unsupported model identifier")
+        raise ValueError("model_name: copy one models object key (model ID), not a display name, quotes or JSON object")
     if not (8 <= len(key) <= 2048) or any(ord(c) < 33 for c in key):
-        raise ValueError("invalid API key")
+        raise ValueError("api_key: must be 8–2048 printable characters with no spaces or line breaks; paste the raw key without JSON quotes")
 
 
 def create_credential_file(dest, base_url, model):
@@ -118,6 +118,12 @@ if __name__ == "__main__":
             apply(args.config, args.credentials)
         else:
             audit(args.config)
-    except (ValueError, KeyError, OSError) as exc:
-        # Error cause may contain user strings only if emitted by Python; avoid them.
+    except ValueError as exc:
+        # Credentials validation errors are all fixed, pre-authored diagnostics.
+        # Never echo or interpolate the user-provided URL, model ID or API key.
+        reason = str(exc)
+        if args.mode == "credentials" and reason.startswith(("base_url:", "model_name:", "api_key:")):
+            raise SystemExit("A05_INPUT_ERROR: " + reason + "; no input values printed") from None
+        raise SystemExit("A05_BLOCKED: configuration baseline or input format invalid; no keys printed") from None
+    except (KeyError, OSError):
         raise SystemExit("A05_BLOCKED: input/config validation failed; no keys printed") from None
