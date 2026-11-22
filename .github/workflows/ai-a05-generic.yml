@@ -59,7 +59,7 @@ jobs:
         run: |
           sudo cp tests/ai/a05_provider_contract.py /opt/s3-voice-ai/data/.a05-ci-provider.py
           sudo chmod 600 /opt/s3-voice-ai/data/.a05-ci-provider.py
-          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
+          sudo docker exec -e PYTHONPATH=/opt/xiaozhi-esp32-server -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
             python3 data/.a05-ci-provider.py mock
       - name: Test replacing and restoring ONLY LLM selection using official server YAML parser
         run: |
