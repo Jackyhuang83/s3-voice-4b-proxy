@@ -1,0 +1,100 @@
+name: S3-Voice-AI A06 original Vosk ASR and EdgeTTS integration
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a06-*'
+      - 'tests/ai/a06_*'
+      - 'docs/ai/A06-VOICE.md'
+      - '.github/workflows/ai-a06-voice.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ai/a06-*'
+      - 'tests/ai/a06_*'
+      - 'docs/ai/A06-VOICE.md'
+      - '.github/workflows/ai-a06-voice.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  a06-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash/Python syntax, official configuration delta
+        run: |
+          bash -n tools/ai/a06-voice.sh
+          python3 -m py_compile tools/ai/a06-config.py tests/ai/a06_voice_contract.py tests/ai/a06_config_test.py
+          python3 tests/ai/a06_config_test.py
+      - name: No new paid API, firmware or external service manipulation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('tools/ai/a06-voice.sh').read_text()
+          assert 'docker compose -p s3-voice-ai restart server' in s
+          assert 'a06-voice-contract.tmp.py real' in s
+          assert 'a04_gateway_smoke.py' in s
+          assert 'vosk-model-small-cn-0.22.zip' in s
+          assert 'docker system prune' not in s
+          assert 'ufw ' not in s and 'iptables' not in s
+          print('A06_STATIC_PASS: upstream provider only, isolated A03 restart and A04 regression gate')
+          PY
+
+  a06-live-providers:
+    needs: a06-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned v0.9.8 XiaoZhi in ephemeral CI Docker host
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Stage original A04 Caddy identity gate in CI
+        run: sudo bash tools/ai/a04-edge.sh stage
+      - name: Create ONLY CI mock generic LLM baseline (no real API Key)
+        run: |
+          printf 'a06-ci-fake-key-no-real-provider' | sudo python3 tools/ai/a05-config.py credentials \
+            --output /opt/s3-voice-ai/data/.a06-ci-fake-llm.json \
+            --base-url https://example.com/v1 --model a06-ci-fake-llm
+          sudo python3 tools/ai/a05-config.py apply \
+            --config /opt/s3-voice-ai/data/.config.yaml \
+            --credentials /opt/s3-voice-ai/data/.a06-ci-fake-llm.json
+          sudo sh -c "printf 'CI_SYNTHETIC_NOT_REAL_PROVIDER\n' > /opt/s3-voice-ai/a05-backup.path"
+          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
+            python3 -c "import yaml; c=yaml.safe_load(open('data/.config.yaml')); assert c['selected_module']['LLM']=='GenericGPTLLM'"
+      - name: Download official Vosk 0.22 model and test native EdgeTTS and Vosk round-trip BEFORE activating
+        run: sudo bash tools/ai/a06-voice.sh activate
+      - name: Verify official YAML, 1-GiB memory limit and gateway regression
+        run: |
+          sudo bash tools/ai/a06-voice.sh status
+          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server python3 -c "
+          import yaml
+          c=yaml.safe_load(open('data/.config.yaml'))
+          assert c['selected_module']['ASR']=='VoskASR'
+          assert c['selected_module']['TTS']=='EdgeTTS'
+          assert c['selected_module']['LLM']=='GenericGPTLLM'
+          print('A06_CONFIG_CONTAINER_PASS: Vosk ASR, original EdgeTTS and GPT active')"
+          sudo python3 tests/ai/a04_gateway_smoke.py \
+            --identity /opt/s3-voice-ai-edge/identity.json --origin http://127.0.0.1:18080
+          test "$(sudo docker inspect -f '{{.HostConfig.Memory}}' s3-voice-ai-server)" = "1073741824"
+      - name: Verify scoped A06 rollback to original A05 GPT settings
+        run: |
+          sudo bash tools/ai/a06-voice.sh rollback
+          sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server python3 -c "
+          import yaml
+          c=yaml.safe_load(open('data/.config.yaml'))
+          assert c['selected_module']['ASR']=='OpenaiASR'
+          assert c['selected_module']['LLM']=='GenericGPTLLM'
+          assert c['selected_module']['TTS']=='EdgeTTS'
+          print('A06_ROLLBACK_PASS: original ASR and A05 GPT, EdgeTTS preserved')"
+      - name: Stop only ephemeral AI containers in runner
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai-edge/pre-a04.config.yaml; then
+            sudo bash tools/ai/a04-edge.sh rollback || true
+          fi
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback || true
+          fi
