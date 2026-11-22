@@ -44,7 +44,12 @@ jobs:
           a,b=s['gateway'],s['tunnel']
           assert a['ports']==[{'mode':'ingress','target':8080,'published':'18080','protocol':'tcp','host_ip':'127.0.0.1'}],a['ports']
           assert a['read_only'] and b['read_only']
-          assert a['mem_limit']<=134217728 and b['mem_limit']<=134217728
+          def mem_bytes(v):
+              if isinstance(v, (int, float)): return int(v)
+              if isinstance(v, str) and v.lower().endswith('m'): return int(v[:-1])*1024*1024
+              if isinstance(v, str) and v.lower().endswith('g'): return int(v[:-1])*1024*1024*1024
+              return int(v)
+          assert mem_bytes(a['mem_limit'])<=134217728 and mem_bytes(b['mem_limit'])<=134217728
           assert a.get('network_mode')!='host' and b.get('network_mode')!='host'
           assert len(a['networks'])==2 and len(b['networks'])==1
           assert a['cap_drop']==['ALL'] and b['cap_drop']==['ALL']
