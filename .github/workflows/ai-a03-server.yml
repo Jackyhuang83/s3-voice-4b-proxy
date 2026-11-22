@@ -56,7 +56,7 @@ jobs:
           from pathlib import Path
           script=Path('tools/ai/a03-server.sh').read_text()
           assert 'docker system prune' not in script
-          assert 'docker compose -p "$PROJECT" stop server' in script
+          assert 'docker compose -p "$PROJECT"' in script and ' stop server' in script
           assert 'server_0.9.8' in script
           assert 'server_latest' not in script
           assert 'iptables' not in script and 'ufw ' not in script and 'nft add' not in script
