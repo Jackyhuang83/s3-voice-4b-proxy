@@ -76,7 +76,7 @@ install() {
   preflight
   previous="$(known_containers)"
   # Use the published v0.9.8 digest directly; fail closed on a missing/changed blob.
-  # Never pull server_latest or resolve a mutable tag at installation time.
+  # Never resolve a mutable registry tag at installation time.
   docker pull "$IMAGE_PIN" >/dev/null
   digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE_PIN" |
     grep -Fx "$IMAGE_PIN" | head -n 1 || true)"
