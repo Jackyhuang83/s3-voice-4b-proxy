@@ -1,0 +1,18 @@
+name: s3-voice-ai
+services:
+  server:
+    image: ${XIAOZHI_IMAGE:?A03 requires an immutable image digest}
+    container_name: s3-voice-ai-server
+    restart: unless-stopped
+    cpus: '1.0'
+    mem_limit: 1024m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - '127.0.0.1:18000:8000/tcp'
+      - '127.0.0.1:18003:8003/tcp'
+    volumes:
+      - ./data:/opt/xiaozhi-esp32-server/data

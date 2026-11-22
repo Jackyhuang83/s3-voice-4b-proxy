@@ -1,0 +1,84 @@
+name: S3-Voice-AI A03 local server smoke
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a03-server.sh'
+      - 'deploy/ai/a03/**'
+      - 'docs/ai/A03-SERVER-DEPLOYMENT.md'
+      - '.github/workflows/ai-a03-server.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ai/a03-server.sh'
+      - 'deploy/ai/a03/**'
+      - 'docs/ai/A03-SERVER-DEPLOYMENT.md'
+      - '.github/workflows/ai-a03-server.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compose-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployment Bash syntax
+        run: bash -n tools/ai/a03-server.sh
+      - name: Validate Compose without pulling an image
+        run: |
+          export XIAOZHI_IMAGE='ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          docker compose -f deploy/ai/a03/docker-compose.yml config --format json > /tmp/a03-resolved.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path('/tmp/a03-resolved.json').read_text())
+          assert d['name'] == 's3-voice-ai', d.get('name')
+          assert len(d['services']) == 1, d['services'].keys()
+          s = d['services']['server']
+          assert s['image'].startswith('ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:')
+          assert s['container_name'] == 's3-voice-ai-server'
+          bindings = {(p.get('host_ip'), str(p.get('published')), p.get('target')) for p in s['ports']}
+          assert bindings == {('127.0.0.1', '18000', 8000), ('127.0.0.1', '18003', 8003)}, bindings
+          assert int(s['mem_limit']) <= 1073741824
+          assert float(s['cpus']) <= 1
+          assert 'privileged' not in s or s['privileged'] is False
+          assert s.get('network_mode') != 'host'
+          assert 'seccomp:unconfined' not in s.get('security_opt', [])
+          assert s['pids_limit'] <= 256
+          assert not any('devices' in entry for entry in s.get('volumes', []))
+          print('A03_STATIC_PASS: single container, loopback-only, bounded, immutable image')
+          PY
+      - name: Verify no global host mutations in managed script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          script=Path('tools/ai/a03-server.sh').read_text()
+          assert 'docker system prune' not in script
+          assert 'docker compose -p "$PROJECT"' in script and ' stop server' in script
+          assert 'server_0.9.8' in script
+          assert 'server_latest' not in script
+          assert 'iptables' not in script and 'ufw ' not in script and 'nft add' not in script
+          assert 'firmware' in script.lower()
+          assert 'PENDING_A05_NOT_A_REAL_KEY' in script
+          assert '127.0.0.1:18003' in script
+          print('A03_SAFETY_PASS')
+          PY
+
+  image-startup-smoke:
+    needs: compose-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start official v0.9.8 image on ephemeral CI runner only
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Verify official OTA POST and private loopback
+        run: sudo bash tools/ai/a03-server.sh status
+      - name: Stop only test container; leave runner other projects unchanged
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback
+          fi
