@@ -11,6 +11,9 @@ services:
     pids_limit: 100
     read_only: true
     cap_drop: [ALL]
+    # Official Caddy binary carries cap_net_bind_service=+ep in Docker image.
+    # Permit exactly that file capability to avoid exec EPERM with bounding set ALL dropped.
+    cap_add: [NET_BIND_SERVICE]
     security_opt:
       - no-new-privileges:true
     ports:
