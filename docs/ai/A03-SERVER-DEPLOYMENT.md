@@ -1,7 +1,7 @@
 # S3-Voice-AI A03 — XiaoZhi server v0.9.8, isolated staging and rollback
 
 **Workstream:** AI server; A01=#21 MERGED; A02=#22 MERGED; P0 100% / overall 10%. A03=18% project weight, contingent on the target Debian 13 VPS actually running the service and all tests passing.  
-**Version:** Official upstream `xinnan-tech/xiaozhi-esp32-server` release `v0.9.8` (`8f2dda09cf18f1c1ece0f906eee4cc2fabb7fb58`). Its official [Docker publication workflow](https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/v0.9.8/.github/workflows/docker-image.yml) publishes immutable release *tag* `server_0.9.8`. During installation the script **pulls that tag exactly once, records the resolved SHA256 digest in a private .env, and runs by digest**. No floating `server_latest`.
+**Version:** Official upstream `xinnan-tech/xiaozhi-esp32-server` release `v0.9.8` (`8f2dda09cf18f1c1ece0f906eee4cc2fabb7fb58`). Its official [Docker publication workflow](https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/v0.9.8/.github/workflows/docker-image.yml) publishes immutable release *tag* `server_0.9.8`. The official [GitHub Package Versions](https://github.com/xinnan-tech/xiaozhi-esp32-server/pkgs/container/xiaozhi-esp32-server/versions) shows `server_0.9.8` digest `sha256:cd41415f887410080dc2424b5faef651373c72fba37b3979d28e90ee548181af`. Installation **pulls only this literal immutable digest and verifies its RepoDigest**, records it in a private `.env`, then deploys by digest. No mutable `server_latest` or tag resolution at installation time.
 
 ## 1. Design acceptance (A03 vs A04/A05)
 
@@ -48,7 +48,7 @@ git clone --depth 1 --branch ai/p1-a03-isolated-server-20261122 \
   && sudo bash tools/ai/a03-server.sh install
 ~~~
 
-This invokes Docker and starts a **new local-only** server, so it is deliberately not part of A02. It downloads the official tagged image; no Node or ESP firmware build on VPS. Copy just the last `A03_OK` lines or the non-sensitive failure lines for acceptance, **not raw Docker logs** (they may contain IDs). No API keys/real device identifiers needed.
+This invokes Docker and starts a **new local-only** server, so it is deliberately not part of A02. It downloads the official image **by published digest**; no Node or ESP firmware build on VPS. Copy just the last `A03_OK` lines or the non-sensitive failure lines for acceptance, **not raw Docker logs** (they may contain IDs). No API keys/real device identifiers needed.
 
 To verify or stop independently:
 
@@ -72,7 +72,7 @@ The rollback command stops only the new service, leaving the original HomeSphere
 
 | Evidence | Requirement | Result |
 |---|---|---|
-| Official source / image tagged release | Pinned v0.9.8 tag and upstream publishing workflow | SOURCE VERIFIED |
+| Official source / image tagged release | Pinned v0.9.8 tag, published package digest and upstream publishing workflow | SOURCE VERIFIED |
 | Port / resource / rollback design | Static Compose and script checks | PENDING CI |
 | CI ephemeral Docker image start and OTA contract | Dedicated `S3-Voice-AI A03 local server smoke` | PENDING CI |
 | **Actual target VPS local server running** | On target host: `A03_OK` checks + container up, source digest recorded privately | **NOT RUN** |
