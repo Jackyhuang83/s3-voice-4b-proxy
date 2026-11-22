@@ -169,7 +169,16 @@ rollback() {
   cp "$EDGE/pre-a04.config.yaml" "$A03/data/.config.yaml"
   chmod 600 "$A03/data/.config.yaml"
   ai_restart
-  curl --noproxy '*' -fsS --max-time 10 http://127.0.0.1:18003/xiaozhi/ota/ >/dev/null || die "A03 health failed after rollback"
+  # Docker "Started" means the process launched, not that Python OTA bound 8003.
+  restored=0
+  for n in $(seq 1 45); do
+    if curl --noproxy '*' -fsS --max-time 2 http://127.0.0.1:18003/xiaozhi/ota/ >/dev/null 2>&1; then
+      restored=1
+      break
+    fi
+    sleep 1
+  done
+  test "$restored" = 1 || die "A03 OTA health failed after rollback readiness window"
   ok "restored A03 pre-A04 configuration and stopped only dedicated A04 containers"
   ok "private A04 files retained; original HomeSphere/MiniProbe untouched"
 }
