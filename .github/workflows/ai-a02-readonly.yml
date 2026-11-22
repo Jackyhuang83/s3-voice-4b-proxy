@@ -1,0 +1,53 @@
+name: S3-Voice-AI A02 safe inventory
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a02_vps_inventory.sh'
+      - 'docs/ai/A02-VPS-DEPLOYMENT-BASELINE.md'
+      - '.github/workflows/ai-a02-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ai/a02_vps_inventory.sh'
+      - 'docs/ai/A02-VPS-DEPLOYMENT-BASELINE.md'
+      - '.github/workflows/ai-a02-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check-a02-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Bash
+        run: bash -n tools/ai/a02_vps_inventory.sh
+      - name: Reject commands that mutate target or dump secrets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path('tools/ai/a02_vps_inventory.sh').read_text()
+          banned = [
+              'docker inspect ', 'docker stop ', 'docker rm ', 'docker system prune',
+              'docker compose up', 'docker compose down', 'systemctl ', 'iptables ',
+              'nft add ', 'nft flush ', 'mkfs.', 'curl ', 'wget ', 'sudo ',
+              'cat /etc/shadow', 'printenv ', 'env |', 'set -x', 'rm -rf ',
+          ]
+          found = [word for word in banned if word in script]
+          assert not found, f'Forbidden inventory commands: {found}'
+          assert 'set -u' in script
+          PY
+      - name: Run sanitized inventory on CI runner (NOT on user's VPS)
+        run: |
+          output="$(bash tools/ai/a02_vps_inventory.sh)"
+          printf '%s\n' "$output" | grep -Fx 'S3_VOICE_AI_A02_INVENTORY_V1'
+          printf '%s\n' "$output" | grep -Fx 'A02_INVENTORY_END'
+          printf '%s\n' "$output" | grep -Eq '^os_id='
+          printf '%s\n' "$output" | grep -Eq '^arch='
+          printf '%s\n' "$output" | grep -Eq '^tcp_port_18000=(unknown|listening|no_listener_seen)$'
+          if printf '%s\n' "$output" | grep -Ei '(password=|secret=|api_key=|authorization=|token=|client_id=|device_id=|hostname=|public_ip=)'; then
+            echo 'Unexpected sensitive output key' >&2
+            exit 1
+          fi
+          git diff --exit-code -- .
