@@ -126,7 +126,7 @@ def main():
     sp = p.add_subparsers(dest="action", required=True)
     s = sp.add_parser("stage-render")
     s.add_argument("--original", required=True)
-    s.add_argument("--secret", required=True)
+    s.add_argument("--state", required=True)
     s.add_argument("--output", required=True)
     s = sp.add_parser("capture")
     s.add_argument("--log", required=True)
@@ -143,10 +143,10 @@ def main():
     s.add_argument("--out-config", required=True)
     a = p.parse_args()
     if a.action == "stage-render":
-        replace_private(a.output, enroll_caddy(Path(a.original).read_text(), a.secret), 0o444)
+        replace_private(a.output, enroll_caddy(Path(a.original).read_text(), load(a.state)["pair_secret"]), 0o444)
         print("A07_OK: staging-only Caddy gate rendered; unknown device always HTTP 403")
     elif a.action == "capture":
-        device, client = capture(Path(a.log).read_text(), a.secret)
+        device, client = capture(Path(a.log).read_text(), load(a.state)["pair_secret"])
         private_json(a.output, {"device_id": device, "client_id": client})
         print("A07_CANDIDATE: one hardware identity captured in private root-only file")
         print("A07_CANDIDATE: device_id suffix=" + device[-5:] + "; client_id suffix=" + client[-6:])
@@ -157,12 +157,12 @@ def main():
         device = candidate["device_id"]
         client = candidate["client_id"]
         config = Path(a.config).read_text()
-        caddy = bound_caddy(original, current, device, client, a.secret)
-        updated = update_ws(config, current["pair_secret"], a.secret, current["hostname"])
+        caddy = bound_caddy(original, current, device, client, load(a.state)["pair_secret"])
+        updated = update_ws(config, current["pair_secret"], load(a.state)["pair_secret"], current["hostname"])
         identity = {
             "device_id": device,
             "client_id": client,
-            "pair_secret": a.secret,
+            "pair_secret": load(a.state)["pair_secret"],
             "hostname": current["hostname"],
             "mode": "hardware",
         }
