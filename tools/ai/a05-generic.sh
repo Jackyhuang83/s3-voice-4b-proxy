@@ -76,7 +76,7 @@ activate() {
   test "$consent" = YES || die "not authorized to make a paid API request; no server changes made"
   cp "$SRC/tests/ai/a05_provider_contract.py" "$PROVIDER"
   chmod 600 "$PROVIDER"
-  docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
+  docker exec -e PYTHONPATH=/opt/xiaozhi-esp32-server -w /opt/xiaozhi-esp32-server s3-voice-ai-server \
     python3 data/.a05-provider-smoke.tmp.py live \
     --credentials data/.a05-credential.tmp.json || die "real upstream streaming call failed; original config left untouched"
 
