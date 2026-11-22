@@ -1,0 +1,34 @@
+:8080 {
+  # The random bearer secret is embedded in the URL. Do not log request paths.
+  log {
+    output discard
+  }
+
+  @ota {
+    method POST
+    path /xiaozhi/ota/__PAIR_SECRET__
+    header Device-Id __DEVICE_ID__
+    header Client-Id __CLIENT_ID__
+  }
+  handle @ota {
+    rewrite * /xiaozhi/ota/
+    reverse_proxy s3-voice-ai-server:8003
+  }
+
+  @ws {
+    method GET
+    path /xiaozhi/v1/__PAIR_SECRET__
+    header Device-Id __DEVICE_ID__
+    header Client-Id __CLIENT_ID__
+    header Connection *Upgrade*
+    header Upgrade websocket
+  }
+  handle @ws {
+    rewrite * /xiaozhi/v1/
+    reverse_proxy s3-voice-ai-server:8000
+  }
+
+  handle {
+    respond "Forbidden" 403
+  }
+}
