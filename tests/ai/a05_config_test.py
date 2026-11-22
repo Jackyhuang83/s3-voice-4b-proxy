@@ -30,6 +30,23 @@ for url in [
         raise AssertionError("unsafe URL accepted")
 module.require_endpoint("https://api.example.com/v1", "sample-model", "a05-test-token")
 
+# The user-facing credential diagnostics must identify only the bad FIELD,
+# never print actual provider values, user model names, or API keys.
+for bad_field, bad_url, bad_model, bad_key in [
+    ("base_url", "http://private.example/v1", "model-a", "secret-a05-token"),
+    ("model_name", "https://api.example.com/v1", "{entire-json-models-object}", "secret-a05-token"),
+    ("api_key", "https://api.example.com/v1", "model-a", "short"),
+]:
+    with tempfile.TemporaryDirectory(prefix="a05-invalid-") as d:
+        cmd = [sys.executable, str(helper), "credentials", "--output", str(Path(d) / "cred.json"),
+               "--base-url", bad_url, "--model", bad_model]
+        p = subprocess.run(cmd, input=bad_key, text=True, capture_output=True)
+        combined = p.stdout + p.stderr
+        assert p.returncode != 0 and ("A05_INPUT_ERROR: " + bad_field + ":") in combined
+        assert bad_key not in combined and bad_model not in combined and bad_url not in combined
+        assert not (Path(d) / "cred.json").exists()
+print("A05_INPUT_DIAGNOSTIC_PASS: exact faulty field identified, credential values never echoed")
+
 with tempfile.TemporaryDirectory(prefix="a05-test-") as d:
     temp = Path(d)
     cfg = temp / ".config.yaml"
