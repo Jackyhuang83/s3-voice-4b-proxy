@@ -1,0 +1,54 @@
+name: s3-voice-ai-edge
+
+services:
+  gateway:
+    image: ${CADDY_IMAGE:?A04 requires an immutable Caddy image digest}
+    container_name: s3-voice-ai-gateway
+    restart: unless-stopped
+    user: '1000:1000'
+    cpus: '0.25'
+    mem_limit: 128m
+    pids_limit: 100
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - '127.0.0.1:18080:8080/tcp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      XDG_CONFIG_HOME: /config
+      XDG_DATA_HOME: /data
+    tmpfs:
+      - /config:rw,mode=1777
+      - /data:rw,mode=1777
+      - /tmp:rw,mode=1777
+    networks:
+      - front
+      - a03
+
+  tunnel:
+    profiles: [tunnel]
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.11.0}
+    container_name: s3-voice-ai-tunnel
+    restart: unless-stopped
+    user: '65532:65532'
+    cpus: '0.25'
+    mem_limit: 128m
+    pids_limit: 100
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    command: ['tunnel','--no-autoupdate','run','--token-file','/run/secrets/tunnel-token']
+    volumes:
+      - ./tunnel-token:/run/secrets/tunnel-token:ro
+    networks:
+      - front
+
+networks:
+  front: {}
+  a03:
+    external: true
+    name: s3-voice-ai_default
