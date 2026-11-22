@@ -87,6 +87,8 @@ PY
   test -f "$temp/vosk-model-small-cn-0.22/am/final.mdl" || die "downloaded model lacks official acoustic weights"
   test -f "$temp/vosk-model-small-cn-0.22/conf/model.conf" || die "downloaded model lacks official config"
   mv "$temp/vosk-model-small-cn-0.22" "$MODEL"
+  rm -rf "$temp"
+  trap - EXIT
   ok "official Apache-2.0 Vosk Chinese 0.22 small model installed in private A03 data mount"
 }
 test_voice() {
