@@ -73,11 +73,28 @@ The rollback command stops only the new service, leaving the original HomeSphere
 | Evidence | Requirement | Result |
 |---|---|---|
 | Official source / image tagged release | Pinned v0.9.8 tag, published package digest and upstream publishing workflow | SOURCE VERIFIED |
-| Port / resource / rollback design | Static Compose and script checks | PENDING CI |
-| CI ephemeral Docker image start and OTA contract | Dedicated `S3-Voice-AI A03 local server smoke` | PENDING CI |
-| **Actual target VPS local server running** | On target host: `A03_OK` checks + container up, source digest recorded privately | **NOT RUN** |
-| User HomeSphere/MiniProbe unaffected after starting | target `known_containers` snapshot unchanged | **NOT RUN** |
+| Port / resource / rollback design | Static Compose and script checks | **PASS — GitHub CI** |
+| CI ephemeral Docker image start and OTA contract | Dedicated `S3-Voice-AI A03 local server smoke` | **PASS — GitHub CI, including CI rollback** |
+| **Actual target VPS local server running** | Target root Shell output from reviewed install script: container Started; OTA GET/POST PASS; official pinned image | **PASS — user-supplied live host output** |
+| User HomeSphere/MiniProbe unchanged in running-container snapshot | Installer compares known container names before/after | **PASS — installer reached final success; full app health not separately tested** |
 | Public WSS / device auth / cloud billing | A04/A05, not included | **NOT RUN** |
 | Real Waveshare 4B voice dialog | A07, not included | **NOT RUN** |
 
-**A03 is a deployment PR, not a source-only audit.** CI success on a GitHub runner does not count as actual VPS deployment. According to GDGS, do not mark A03 (18%) complete until reviewed HEAD is green, real target VPS smoke/rollback evidence is recorded and the PR is merged. Until then: P0 100%, P1 0%, P2 0%, P3 0%, project overall 10%.
+**A03 target-host staging deployed:** CI on prior head was 12/12 PASS, and the target VPS install and OTA contract are now verified. This documentation change must pass its **new final HEAD CI** before A03 PR #23 may merge. Only after merge should A03 +18% be counted (P0=100%, P1=60%, P2/P3=0%, project=28%). Actual host rollback was NOT requested or run; its behavior was tested in CI. No public WSS or real paid-model/hardware validation has been performed.
+
+
+## 6. Target Debian 13 VPS live install evidence
+
+User supplied terminal output from the reviewed `bash tools/ai/a03-server.sh install` on the host previously inventoried by A02 (Debian 13/x86_64, 2 cores, Docker 29.9.3). Output included:
+
+```text
+[+] up 2/2
+Network s3-voice-ai_default Created
+Container s3-voice-ai-server Started
+A03_OK: OTA GET/POST smoke PASS; MQTT absent; firmware.url empty; WebSocket config loopback-only
+A03_OK: real device + paid API calls NOT tested (A04 / A05 / A07)
+A03_OK: installed official server_0.9.8 pinned digest, with 1024 MiB and 1 CPU cap; private backup created
+A03_OK: no firewall changes, no Cloudflare Tunnel, no original Docker services touched
+```
+
+**Evidence boundary:** Source code establishes that the final `A03_OK` message is printed only after `check_local` and comparison of the existing known running containers. Real OTA POST smoke with a **synthetic** device identifier was run. No actual Waveshare 4B was connected, no new public TCP/UDP ingress allowed, no provider API credential used, no independent HomeSphere/MiniProbe HTTP functional probe performed. Running containers are not equivalent to functional app test. Service availability may change after the snapshot; A04 must recheck before introducing Tunnel ingress. The CLI did not output the private full image digest but used the literal pinned digest from the reviewed installer.
