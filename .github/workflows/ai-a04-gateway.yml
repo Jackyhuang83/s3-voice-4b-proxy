@@ -1,0 +1,112 @@
+name: S3-Voice-AI A04 identity-gated OTA and WebSocket
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/ai/a04/**'
+      - 'tools/ai/a04-edge.sh'
+      - 'tests/ai/a04_gateway_smoke.py'
+      - 'docs/ai/A04-TUNNEL-INGRESS.md'
+      - '.github/workflows/ai-a04-gateway.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/ai/a04/**'
+      - 'tools/ai/a04-edge.sh'
+      - 'tests/ai/a04_gateway_smoke.py'
+      - 'docs/ai/A04-TUNNEL-INGRESS.md'
+      - '.github/workflows/ai-a04-gateway.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  a04-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse shell and Python smoke
+        run: |
+          bash -n tools/ai/a04-edge.sh
+          python3 -m py_compile tests/ai/a04_gateway_smoke.py
+      - name: Validate separated bridge networks and bounded resources
+        run: |
+          export CADDY_IMAGE='caddy@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          export CLOUDFLARED_IMAGE='cloudflare/cloudflared@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          docker compose -f deploy/ai/a04/docker-compose.yml --profile tunnel config --format json > /tmp/a04.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('/tmp/a04.json').read_text())
+          s=o['services']
+          assert len(s)==2, s.keys()
+          a,b=s['gateway'],s['tunnel']
+          assert a['ports']==[{'mode':'ingress','target':8080,'published':'18080','protocol':'tcp','host_ip':'127.0.0.1'}],a['ports']
+          assert a['read_only'] and b['read_only']
+          def mem_bytes(v):
+              if isinstance(v, (int, float)): return int(v)
+              if isinstance(v, str) and v.lower().endswith('m'): return int(v[:-1])*1024*1024
+              if isinstance(v, str) and v.lower().endswith('g'): return int(v[:-1])*1024*1024*1024
+              return int(v)
+          assert mem_bytes(a['mem_limit'])<=134217728 and mem_bytes(b['mem_limit'])<=134217728
+          assert a.get('network_mode')!='host' and b.get('network_mode')!='host'
+          assert len(a['networks'])==2 and len(b['networks'])==1
+          assert a['cap_drop']==['ALL'] and b['cap_drop']==['ALL']
+          # Official Caddy binary has cap_net_bind_service=+ep filecap.
+          # Without this one capability, execve fails with EPERM.
+          assert a.get('cap_add')==['NET_BIND_SERVICE'],a.get('cap_add')
+          assert not b.get('cap_add')
+          assert all('@sha256:' in x['image'] for x in s.values())
+          print('A04_COMPOSE_STATIC_PASS: loopback-only, isolated front network, immutable images')
+          PY
+      - name: Confirm forbidden routes and secrets never hardcoded
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('deploy/ai/a04/Caddyfile.in').read_text()
+          assert 'respond "Forbidden" 403' in f
+          assert 'path /xiaozhi/ota/__PAIR_SECRET__' in f
+          assert 'path /xiaozhi/v1/__PAIR_SECRET__' in f
+          assert 'header Device-Id __DEVICE_ID__' in f
+          assert 'header Client-Id __CLIENT_ID__' in f
+          assert 'output discard' in f
+          s=Path('tools/ai/a04-edge.sh').read_text()
+          assert 'docker system prune' not in s
+          assert 'docker compose down' not in s
+          assert 'iptables' not in s and 'ufw ' not in s
+          assert 'PENDING_A05_NOT_A_REAL_KEY' in s
+          assert 'no public Tunnel' in s
+          print('A04_GATE_STATIC_PASS')
+          PY
+
+  a04-actual-local-integration:
+    needs: a04-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start official XiaoZhi v0.9.8 in CI runner
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Stage official Caddy bridge gate, run OTA/WS identity admission
+        run: sudo bash tools/ai/a04-edge.sh stage
+      - name: Print CI-only gateway startup diagnostics on failure
+        if: failure()
+        run: |
+          sudo docker ps -a --filter name=s3-voice-ai-gateway --format 'table {{.Names}}\t{{.Status}}'
+          sudo docker logs s3-voice-ai-gateway --tail 60 || true
+      - name: Check local gateway without secret leaks
+        run: sudo bash tools/ai/a04-edge.sh status
+      - name: Test A04-only rollback, and restored A03 OTA
+        run: |
+          sudo bash tools/ai/a04-edge.sh rollback
+          sudo bash tools/ai/a03-server.sh status
+      - name: Leave runner projects untouched
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai-edge/.env; then
+            sudo bash tools/ai/a04-edge.sh rollback || true
+          fi
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback || true
+          fi
