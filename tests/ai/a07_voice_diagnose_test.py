@@ -11,6 +11,8 @@ spec.loader.exec_module(module)
 raw = "\n".join([
     "2026-11-23T12:00:00.000000Z 识别文本: SECRET_PERSONAL_USER_SPEECH",
     "2026-11-23T12:00:00.500000Z 大模型收到用户消息: SECRET_USER_QUESTION",
+    "2026-11-23T12:00:03.500000Z 语音生成成功: SECRET_TTS_AUDIO_FILE",
+    "2026-11-23T12:00:04.000000Z 语音生成失败1次: SECRET_TTS_RETRY",
     "2026-11-23T12:00:06.500000Z 发送第一段语音: SECRET_PERSONAL_REPLY",
     "2026-11-23T12:00:07.000000Z 语音生成失败: KEY_SECRET_SHOULD_NEVER_SHOW",
     "2026-11-23T12:00:07.500000Z 发送音频失败: SECRET_PATH",
@@ -26,6 +28,13 @@ assert counts["AUDIO_SEND_FAIL"] == 1
 assert counts["WS_CONN_FAIL"] == 1
 assert counts["WS_DISCONNECT"] == 1
 assert gaps == [6.5]
+phase_counts, phases = module.pipeline_timings(raw)
+assert phase_counts == {"TTS_READY": 1, "TTS_RETRY": 1}
+assert phases["ASR_TO_GPT"] == [0.5]
+assert phases["GPT_TO_TTS_READY"] == [3.0]
+assert phases["GPT_TO_FIRST_TTS"] == [6.0]
+assert "SECRET_PERSONAL_USER_SPEECH" not in repr(phase_counts)
+assert "SECRET_TTS_AUDIO_FILE" not in repr(phases)
 assert module.timestamp("nonsense") is None
 counts2, gaps2 = module.classify("2026-11-23T12:00:00Z unrelated private text\n")
 assert counts2["ASR"] == 0 and not gaps2
