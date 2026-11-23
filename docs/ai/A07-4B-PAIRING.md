@@ -87,6 +87,32 @@ Expected after healthy recovery: `A07_OK: verified: original A04 identity and A0
 
 If `recover` reports `A07_RECOVERY_UNVERIFIED`, STOP; collect only container statuses, redacted service logs and HTTP status codes, not secret URL/identity. Do **not** force-delete the A07 directory or rerun `stage`. A07 remains unaccepted until actual real 4B enrollment + voice is proven.
 
+## 2.7. 4B mid-sentence interruptions: official 60 ms Opus pacing experiment
+
+**Actual user observation (2026-11-23):** Speech intermittently breaks off **mid-word in the same sentence**, then resumes. This differs from TTS waiting between complete sentences. Recent redacted real VPS sample had CPU 1.5%, 414.8 MiB, independent fixed Edge TTS first/full 0.55/0.86s, and zero TTS errors; there was one earlier audio-send failure.
+
+**Official upstream precedent:**
+- [Upstream issue #2632](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/2632): matches mid-syllable playback breaks even with full synthesized text; maintainers acknowledge and link [#2647](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/2647). **No general confirmed universal fix.**
+- [Upstream issue #3349](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/3349): **verified on ESP32-C3**, not yet on Waveshare 4B. With default `PRE_BUFFER_COUNT=5`, first Opus frames can burst within milliseconds, while 60 ms pacing from frame zero restored that reporter's device playback.
+- Original pinned XiaoZhi v0.9.8 `config.yaml` already exposes `tts_audio_send_delay: 0` (default) or `60` ms (fixed pacing). Original `core/handle/sendAudioHandle.py` uses `send_delay_ms > 0` to enqueue **all** Opus packets, rather than immediate first-five burst. Therefore use **official config only**, no fork or firmware replacement.
+
+**A07 existing-PR code:** `tools/ai/a07-audio-pacing.py status|apply|rollback` with exact comparison and root-only snapshot under `/opt/s3-voice-ai/a07-pacing`. `apply` requires A05 GenericGPTLLM, A06 VoskASR+EdgeTTS, A07 real bound hardware identity, original default `0` or absence. Changes only top-level `tts_audio_send_delay` to 60 in private A03 YAML, restarts **only** `s3-voice-ai-server`, validates original A03 OTA 200 + A04 strict identity OTA/WS/403; failed startup triggers immediate snapshot restore attempt. Does not change A04 gateway, Cloudflare, other VPS projects or device firmware. `rollback` confirms exact active trial config hash before restoring the original private YAML, restarts only A03, and verifies A03/A04. It preserves old snapshots privately.
+
+**On actual VPS** (only after exact HEAD has passed A07 CI, and not while another deployment is applying):
+
+```bash
+cd /tmp/s3-voice-a03-src
+git fetch --depth 1 origin ai/p3-a07-4b-enrollment-20261123
+git checkout --detach FETCH_HEAD
+# Verify HEAD matches the reviewed A07 CI SHA before changing production
+python3 tools/ai/a07-audio-pacing.py status
+python3 tools/ai/a07-audio-pacing.py apply
+```
+
+**Only ONE real-device A/B test:** ask 4B to speak a 2-3 sentence uninterrupted reply with the same Wi-Fi and model. Listen specifically for pauses **within words**, not normal between-sentence delays. If it still breaks, or latency worsens, execute `python3 tools/ai/a07-audio-pacing.py rollback` to restore the original config. If it is noticeably improved, leave trial active, `status` and record actual 4B acceptance as a trial result (not universal protocol proof). `rollback` is also available after success.
+
+**Not recommended without evidence:** switch to MQTT/UDP and open new ports; rewrite firmware/audio decoder; change Opus sampling rate, Vosk, GPT or Edge TTS; raise CPU quota based on idle sampling. Upstream C3 results are a hypothesis for S3 4B until physical playback confirms.
+
 ## 3. Acceptance levels / GDGS
 
 | Gate | Meaning |
