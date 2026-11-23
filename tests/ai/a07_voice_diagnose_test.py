@@ -93,3 +93,22 @@ with patch.object(module.subprocess, "run", side_effect=fake_run):
     assert "SECRET" not in buff.getvalue()
 
 print("A07_DIAG_PASS: XiaoZhi original log categories and 6.5s coarse gap parsed; private speech/text excluded")
+
+
+# Actual reported pattern: FIRST segments + LAST means TTS flow milestones,
+# NOT evidence of real frame transport or successful device playback.
+playback_raw = "\\n".join([
+    "2026-11-23T15:41:17Z 发送音频消息: SentenceType.FIRST, PRIVATE_TEXT_1",
+    "2026-11-23T15:41:18Z 发送音频消息: SentenceType.FIRST, PRIVATE_TEXT_2",
+    "2026-11-23T15:41:21Z 发送音频消息: SentenceType.LAST, None",
+    "2026-11-23T15:41:22Z 音频发送完成",
+    "2026-11-23T15:41:23Z 客户端断开连接"
+])
+playback_marks, playback_gaps = module.playback_audit(playback_raw)
+assert playback_marks == {
+    "SEGMENTS": 2, "LAST": 1, "QUEUE_DRAIN_DEBUG": 1,
+    "AUDIO_SEND_FAIL": 0, "WS_DISCONNECT": 1
+}
+assert playback_gaps == [1.0]
+assert "PRIVATE_TEXT" not in str(playback_marks) + str(playback_gaps)
+assert module.playback_audit("unrelated")[0]["SEGMENTS"] == 0
