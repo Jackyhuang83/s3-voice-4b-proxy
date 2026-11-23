@@ -21,7 +21,21 @@ die() { printf 'A07_BLOCKED: %s\n' "$*" >&2; exit 1; }
 ok() { printf 'A07_OK: %s\n' "$*"; }
 root() { test "$(id -u)" = 0 || die "run in root Shell"; }
 edge() { docker compose -p s3-voice-ai-edge -f "$COMPOSE" --env-file "$A04/.env" "$@"; }
-gateway_restart() { edge --profile tunnel up -d --no-deps --force-recreate gateway >/dev/null; }
+gateway_ready() {
+  local code=""
+  for n in $(seq 1 30); do
+    code="$(curl --noproxy '*' -sS --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ 2>/dev/null || true)"
+    if test "$code" = 403; then return 0; fi
+    sleep 1
+  done
+  printf 'A07_BLOCKED: Caddy did not return HTTP 403 after restart\n' >&2
+  return 1
+}
+gateway_restart() {
+  # Docker "Started" happens BEFORE Caddy has finished binding HTTP.
+  edge --profile tunnel up -d --no-deps --force-recreate gateway >/dev/null || return 1
+  gateway_ready || return 1
+}
 server_restart() {
   (cd "$A03" && docker compose -p s3-voice-ai restart server >/dev/null)
   ready=0
@@ -34,7 +48,19 @@ server_restart() {
     return 1
   fi
 }
-smoke() { python3 "$SMOKE" --identity "$IDENTITY" --origin http://127.0.0.1:18080 >/dev/null; }
+smoke() {
+  # The new Caddy process can briefly reset already-open connections.
+  # Retry the unchanged official A04 200/101/403 smoke, not the config edits.
+  local n
+  for n in 1 2 3 4 5; do
+    if python3 "$SMOKE" --identity "$IDENTITY" --origin http://127.0.0.1:18080 >/dev/null 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'A07_BLOCKED: A04 full 200/101/403 admission smoke failed after readiness checks\n' >&2
+  return 1
+}
 status() {
   root
   if test ! -f "$STATE"; then
@@ -74,28 +100,46 @@ PY
   ok "A04 synthetic ingress, A05 GPT and A06 voice baseline checked; no edits"
 }
 restore_original() {
+  # Error recovery is deliberately verified; never claim rollback success if
+  # Caddy and XiaoZhi are still unreachable. Do not restart an unchanged server.
   trap - ERR
-  if test -f "$A07/pre-a07.Caddyfile"; then
-    cp "$A07/pre-a07.Caddyfile" "$CADDY"
-    chmod 444 "$CADDY"
-    gateway_restart || true
+  local failed=0 changed_caddy=0 changed_config=0
+  if test ! -f "$A07/pre-a07.Caddyfile" ||
+     test ! -f "$A07/pre-a07.identity.json" ||
+     test ! -f "$A07/pre-a07.config.yaml"; then
+    printf 'A07_RECOVERY_UNVERIFIED: original private snapshots missing\n' >&2
+    return 1
   fi
-  if test -f "$A07/pre-a07.identity.json"; then
-    cp "$A07/pre-a07.identity.json" "$IDENTITY"
-    chmod 600 "$IDENTITY"
+  if ! cmp -s "$A07/pre-a07.Caddyfile" "$CADDY"; then
+    cp "$A07/pre-a07.Caddyfile" "$CADDY" && chmod 444 "$CADDY" || failed=1
+    changed_caddy=1
   fi
-  if test -f "$A07/pre-a07.config.yaml"; then
-    cp "$A07/pre-a07.config.yaml" "$CONFIG"
-    chmod 600 "$CONFIG"
-    server_restart || true
+  cp -p "$A07/pre-a07.identity.json" "$IDENTITY" || failed=1
+  if test "$changed_caddy" = 1 && test "$failed" = 0; then
+    gateway_restart || failed=1
   fi
-  ok "original A04 synthetic gate and original A05/A06 config restored"
+  if ! cmp -s "$A07/pre-a07.config.yaml" "$CONFIG"; then
+    cp -p "$A07/pre-a07.config.yaml" "$CONFIG" && chmod 600 "$CONFIG" || failed=1
+    changed_config=1
+  fi
+  if test "$changed_config" = 1 && test "$failed" = 0; then
+    server_restart || failed=1
+  fi
+  if test "$failed" = 0 && gateway_ready && smoke; then
+    ok "verified: original A04 identity and A05/A06 configuration restored; OTA/WSS 200/101/403 PASS"
+    return 0
+  fi
+  printf 'A07_RECOVERY_UNVERIFIED: inspect A03/A04 status; private snapshots retained\n' >&2
+  return 1
 }
 on_error() {
   code=$?
   trap - ERR
-  restore_original >&2 || true
-  printf 'A07_BLOCKED: stage/bind error; attempted scoped A03/A04 restore; no other services touched\n' >&2
+  if restore_original >&2; then
+    printf 'A07_BLOCKED: stage/bind error; scoped A03/A04 restore VERIFIED; A07 working directory kept\n' >&2
+  else
+    printf 'A07_RECOVERY_UNVERIFIED: scoped restore could not be confirmed; do not retry stage\n' >&2
+  fi
   exit "$code"
 }
 stage() {
@@ -195,17 +239,34 @@ PY
   python3 "$SMOKE" --identity "$IDENTITY" --origin https://voice.cncloudx.com
   ok "public OTA/WSS admission PASS; real microphone/speaker hardware test still required"
 }
+recover() {
+  root
+  test -f "$STATE" && test -f "$A07/pre-a07.Caddyfile" &&
+    test -f "$A07/pre-a07.identity.json" && test -f "$A07/pre-a07.config.yaml" ||
+    die "no interrupted A07 state to recover"
+  python3 - "$STATE" <<'PY'
+import json,sys
+a=json.load(open(sys.argv[1]))
+assert a.get("mode")=="staged", "A07_RECOVERY_BLOCKED: already bound; use rollback"
+PY
+  restore_original || die "original A03/A04 not healthy; keeping all snapshots"
+  local archived="$A03/a07-aborted-$(date -u '+%Y%m%dT%H%M%SZ')"
+  test ! -e "$archived" || die "recovery archive name collision"
+  mv "$A07" "$archived" || die "cannot archive previous A07 state; do not overwrite"
+  chmod 700 "$archived"
+  ok "interrupted stage archived under private /opt/s3-voice-ai; new stage can start from verified original baseline"
+}
 rollback() {
   root
   test -f "$STATE" && test -f "$A07/pre-a07.Caddyfile" || die "no A07 backup"
   restore_original
-  smoke
+  # restore_original itself already runs the complete A04 admission smoke.
   rm -rf "$A07"
-  ok "A07 pairing removed; previous stable synthetic identity gate restored"
+  ok "A07 pairing removed after verified restoration"
 }
 case "$ACTION" in
-  status) status ;; preflight) preflight ;; stage) stage ;;
+  status) status ;; preflight) preflight ;; stage) stage ;; recover) recover ;;
   show-url) show_url ;; capture) capture ;; bind) bind ;;
   public) public_probe ;; rollback) rollback ;;
-  *) printf 'Usage: a07-device.sh preflight|stage|show-url|capture|bind|public|status|rollback\n' >&2; exit 2 ;;
+  *) printf 'Usage: a07-device.sh preflight|stage|show-url|capture|bind|public|status|recover|rollback\n' >&2; exit 2 ;;
 esac
