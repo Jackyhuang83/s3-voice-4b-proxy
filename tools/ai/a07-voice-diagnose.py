@@ -181,6 +181,35 @@ def pipeline_timings(raw):
             state = None
     return counts, phases
 
+
+def playback_audit(raw):
+    """Metadata-only screening; INFO logs NEVER prove Opus delivery or playback.
+
+    No text, URL, token or device identity from logs is retained or printed.
+    Synthetic health-check sessions can appear in the same window.
+    """
+    marks = {"SEGMENTS": 0, "LAST": 0, "QUEUE_DRAIN_DEBUG": 0,
+             "AUDIO_SEND_FAIL": 0, "WS_DISCONNECT": 0}
+    previous = None
+    gaps = []
+    for line in raw.splitlines():
+        when = timestamp(line)
+        if "发送音频消息: SentenceType.FIRST" in line:
+            marks["SEGMENTS"] += 1
+            if previous is not None and when is not None and 0 <= when - previous <= 120:
+                gaps.append(when - previous)
+            previous = when
+        elif "发送音频消息: SentenceType.LAST" in line:
+            marks["LAST"] += 1
+            previous = None
+        elif "音频发送完成" in line:
+            marks["QUEUE_DRAIN_DEBUG"] += 1
+        if any(k in line for k in ALARMS["AUDIO_SEND_FAIL"]):
+            marks["AUDIO_SEND_FAIL"] += 1
+        if "客户端断开连接" in line:
+            marks["WS_DISCONNECT"] += 1
+    return marks, gaps
+
 def edge_probe():
     """One fixed, non-paid Edge TTS request INSIDE the original XiaoZhi image.
 
@@ -249,6 +278,15 @@ def sample(seconds, window_seconds, with_edge_probe=False):
                   f"max_s={max(values):.1f} (approx, concurrent sessions can overlap)", flush=True)
         else:
             print(f"A07_TIMING_{kind}: unavailable", flush=True)
+    playback, gaps = playback_audit(raw)
+    print("A07_PLAYBACK_INFO: " + " ".join(f"{k}={v}" for k, v in playback.items()), flush=True)
+    if gaps:
+        print(f"A07_SEGMENT_LOG_GAP: n={len(gaps)} max_s={max(gaps):.2f} "
+              "(INFO event gaps, NOT packet spacing)", flush=True)
+    else:
+        print("A07_SEGMENT_LOG_GAP: unavailable", flush=True)
+    print("A07_OPUS_FRAME_TIMING: UNOBSERVED (official INFO logs do not timestamp each packet)", flush=True)
+    print("A07_DEVICE_PLAYBACK: UNOBSERVED (no client acknowledgement in these logs)", flush=True)
     # Derive total only from the SAME accepted ASR->GPT->FIRST event triple.
     # Do not use the historical timestamp-sorted ASR/TTS heuristic here.
     paired = [ag + gf for ag, gf in zip(phases["ASR_TO_GPT"], phases["GPT_TO_FIRST_TTS"])]
