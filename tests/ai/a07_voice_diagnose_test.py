@@ -97,7 +97,7 @@ print("A07_DIAG_PASS: XiaoZhi original log categories and 6.5s coarse gap parsed
 
 # Actual reported pattern: FIRST segments + LAST means TTS flow milestones,
 # NOT evidence of real frame transport or successful device playback.
-playback_raw = "\\n".join([
+playback_raw = "\n".join([
     "2026-11-23T15:41:17Z 发送音频消息: SentenceType.FIRST, PRIVATE_TEXT_1",
     "2026-11-23T15:41:18Z 发送音频消息: SentenceType.FIRST, PRIVATE_TEXT_2",
     "2026-11-23T15:41:21Z 发送音频消息: SentenceType.LAST, None",
