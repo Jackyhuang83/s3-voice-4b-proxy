@@ -114,45 +114,74 @@ def classify(raw):
 
 
 def pipeline_timings(raw):
-    """Best-effort timings from ORIGINAL INFO milestones, never log contents.
+    """Conservative single-turn screening from unchanged XiaoZhi log milestones.
 
-    Not correlation-safe when concurrent sessions interleave. GPT->TTS_READY
-    combines LLM streaming, speech generation and Opus encoding; it is NOT
-    a separate GPT latency or Edge TTS wall clock measurement.
+    A valid candidate needs ASR -> GPT -> first-audio log with no intervening
+    new ASR/GPT. A separate TTS-ready timestamp is optional. Logs do not carry
+    a reliable session ID, so even these candidates are estimates, NOT proof
+    when multiple clients concurrently talk. Never retain/print speech text.
     """
-    phases = {"ASR_TO_GPT": [], "GPT_TO_FIRST_TTS": [], "GPT_TO_TTS_READY": []}
-    counts = {"TTS_READY": 0, "TTS_RETRY": 0}
-    asr_at = gpt_at = None
+    phases = {
+        "ASR_TO_GPT": [],
+        "GPT_TO_FIRST_TTS": [],
+        "GPT_TO_TTS_READY": [],
+        "TTS_READY_TO_FIRST": [],
+    }
+    counts = {"TTS_READY": 0, "TTS_RETRY": 0,
+              "MATCHED_TURNS": 0, "AMBIGUOUS_TURNS": 0,
+              "UNMATCHED_FIRST_TTS": 0}
+    state = None
+
+    def elapsed(first, second):
+        if first is None or second is None:
+            return None
+        delay = second - first
+        return delay if 0 <= delay <= 120 else None
+
     for line in raw.splitlines():
         when = timestamp(line)
-        if "语音生成失败" in line and re.search(r"语音生成失败[0-9]+次", line):
+        # Only original INFO milestones; different threads can interleave.
+        if re.search(r"语音生成失败[0-9]+次", line):
             counts["TTS_RETRY"] += 1
         if "语音生成成功:" in line or "语音生成成功：" in line:
             counts["TTS_READY"] += 1
-            if gpt_at is not None and when is not None:
-                gap = when - gpt_at
-                if 0 <= gap <= 120:
-                    phases["GPT_TO_TTS_READY"].append(gap)
+            if state and state["gpt"] is not None and state["ready"] is None:
+                state["ready"] = when
             continue
         if "识别文本:" in line or "识别文本：" in line:
-            asr_at = when
-            gpt_at = None
-        elif "大模型收到用户消息:" in line:
-            if asr_at is not None and when is not None:
-                gap = when - asr_at
-                if 0 <= gap <= 120:
-                    phases["ASR_TO_GPT"].append(gap)
-            gpt_at = when
-        elif "发送第一段语音:" in line and gpt_at is not None and when is not None:
-            gap = when - gpt_at
-            if 0 <= gap <= 120:
-                phases["GPT_TO_FIRST_TTS"].append(gap)
-            gpt_at = None
-            asr_at = None
+            if state is not None:
+                counts["AMBIGUOUS_TURNS"] += 1
+            state = {"asr": when, "gpt": None, "ready": None}
+            continue
+        if "大模型收到用户消息:" in line:
+            if state is None or state["gpt"] is not None:
+                counts["AMBIGUOUS_TURNS"] += 1
+                state = None
+            else:
+                state["gpt"] = when
+            continue
+        if "发送第一段语音:" in line:
+            if state is None or state["gpt"] is None:
+                counts["UNMATCHED_FIRST_TTS"] += 1
+                state = None
+                continue
+            ag = elapsed(state["asr"], state["gpt"])
+            gf = elapsed(state["gpt"], when)
+            if ag is None or gf is None:
+                counts["AMBIGUOUS_TURNS"] += 1
+            else:
+                phases["ASR_TO_GPT"].append(ag)
+                phases["GPT_TO_FIRST_TTS"].append(gf)
+                counts["MATCHED_TURNS"] += 1
+                gr = elapsed(state["gpt"], state["ready"])
+                rf = elapsed(state["ready"], when)
+                if gr is not None and rf is not None:
+                    phases["GPT_TO_TTS_READY"].append(gr)
+                    phases["TTS_READY_TO_FIRST"].append(rf)
+            state = None
     return counts, phases
 
-
-def sample(seconds):
+def sample(seconds, window_seconds):
     print("A07_DIAG: read-only 4B speech latency snapshot; no API request or configuration change", flush=True)
     for name in (SERVER, GATEWAY, TUNNEL):
         print("A07_CONTAINER: " + name + " " + short_state(name), flush=True)
@@ -169,12 +198,12 @@ def sample(seconds):
                   f"max={max(cpus):.1f} RAM_last={rows[-1]['ram']}", flush=True)
         else:
             print(f"A07_RESOURCE: {name} unavailable", flush=True)
-    raw = run(["docker", "logs", "--timestamps", "--since", "15m",
+    raw = run(["docker", "logs", "--timestamps", "--since", f"{window_seconds}s",
                "--tail", "1500", SERVER], seconds=20)
     counts, gaps = classify(raw)
     phase_counts, phases = pipeline_timings(raw)
     print("A07_EVENTS_15M: " + " ".join(f"{key}={value}" for key, value in counts.items()), flush=True)
-    print("A07_TTS_15M: " + " ".join(f"{key}={value}" for key, value in phase_counts.items()), flush=True)
+    print(f"A07_TTS_WINDOW_{window_seconds}S: " + " ".join(f"{key}={value}" for key, value in phase_counts.items()), flush=True)
     for kind, values in phases.items():
         if values:
             print(f"A07_TIMING_{kind}: n={len(values)} median_s={statistics.median(values):.1f} "
@@ -203,7 +232,10 @@ def sample(seconds):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=int, default=12, help="interval between first and last CPU sample (4..60)")
+    ap.add_argument("--window", type=int, default=180, help="log lookback seconds (60..900); use one quiet short 4B voice turn")
     args = ap.parse_args()
     if not 4 <= args.seconds <= 60:
         ap.error("--seconds must be between 4 and 60")
-    sample(args.seconds)
+    if not 60 <= args.window <= 900:
+        ap.error("--window must be between 60 and 900")
+    sample(args.seconds, args.window)
