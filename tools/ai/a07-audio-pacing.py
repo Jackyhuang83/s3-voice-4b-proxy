@@ -25,7 +25,7 @@ DELAY_RE = re.compile(r"(?m)^(tts_audio_send_delay:[ \t]*)([0-9]+)([ \t]*(?:#.*)
 
 
 def sha(data):
-    return hashlib.sha256(data).hexdigest()
+    return hashlib.sha256(data.encode("utf-8") if isinstance(data, str) else data).hexdigest()
 
 
 def render(original):
