@@ -38,7 +38,7 @@ assert "SECRET_TTS_AUDIO_FILE" not in repr(phases)
 
 # A pair must never be stitched across another utterance. Previously this
 # could falsely yield 40s+ "GPT latency" despite a fast earlier round trip.
-interleaved = "\\n".join([
+interleaved = "\n".join([
     "2026-11-23T12:00:00Z 识别文本: OLD_PRIVATE_QUESTION",
     "2026-11-23T12:00:00.100000Z 大模型收到用户消息: OLD_QUESTION",
     "2026-11-23T12:00:40Z 识别文本: NEW_PRIVATE_QUESTION",
