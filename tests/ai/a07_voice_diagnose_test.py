@@ -63,4 +63,33 @@ assert not lonely_phases["GPT_TO_FIRST_TTS"]
 assert module.timestamp("nonsense") is None
 counts2, gaps2 = module.classify("2026-11-23T12:00:00Z unrelated private text\n")
 assert counts2["ASR"] == 0 and not gaps2
+
+# Opt-in Edge probe executes only a fixed text, a single external Edge TTS
+# request in the EXISTING official container; never invokes a paid LLM.
+import ast
+import contextlib
+import io
+from unittest.mock import patch
+
+class FakeCompleted:
+    returncode = 0
+    stdout = '{"first_s":0.51,"full_s":1.43,"bytes":12345}\n'
+
+def fake_run(cmd, **kwargs):
+    assert cmd[:2] == ["docker", "exec"]
+    assert cmd[-2] == "-c"
+    assert "edge_tts" in cmd[-1]
+    assert "GenericGPTLLM" not in cmd[-1]
+    assert "api_key" not in cmd[-1]
+    ast.parse(cmd[-1])
+    return FakeCompleted()
+
+with patch.object(module.subprocess, "run", side_effect=fake_run):
+    buff = io.StringIO()
+    with contextlib.redirect_stdout(buff):
+        module.edge_probe()
+    assert "first_audio_s=0.51" in buff.getvalue()
+    assert "full_audio_s=1.43" in buff.getvalue()
+    assert "SECRET" not in buff.getvalue()
+
 print("A07_DIAG_PASS: XiaoZhi original log categories and 6.5s coarse gap parsed; private speech/text excluded")
