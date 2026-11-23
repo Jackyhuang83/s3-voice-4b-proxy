@@ -181,8 +181,46 @@ def pipeline_timings(raw):
             state = None
     return counts, phases
 
-def sample(seconds, window_seconds):
-    print("A07_DIAG: read-only 4B speech latency snapshot; no API request or configuration change", flush=True)
+def edge_probe():
+    """One fixed, non-paid Edge TTS request INSIDE the original XiaoZhi image.
+
+    No files/config changes and no GPT call. First audio byte and full MP3
+    completion measure network+Edge service, NOT Opus streaming/device jitter.
+    """
+    code = (
+        "import asyncio,json,time,edge_tts\n"
+        "async def main():\n"
+        " t=time.monotonic(); first=None; size=0\n"
+        " async for chunk in edge_tts.Communicate("
+        "'你好，小智语音延迟测试。',voice='zh-CN-XiaoxiaoNeural').stream():\n"
+        "  if chunk['type']=='audio':\n"
+        "   if first is None: first=time.monotonic()-t\n"
+        "   size+=len(chunk['data'])\n"
+        " print(json.dumps({'first_s':first,'full_s':time.monotonic()-t,'bytes':size}))\n"
+        "asyncio.run(main())\n"
+    )
+    try:
+        done = subprocess.run(["docker", "exec", "-w", "/opt/xiaozhi-esp32-server",
+                               SERVER, "python3", "-c", code],
+                              capture_output=True, text=True, timeout=55, check=False)
+        if done.returncode:
+            raise ValueError("provider test unavailable")
+        result = json.loads(done.stdout.strip().splitlines()[-1])
+        first = result["first_s"]
+        full = result["full_s"]
+        size = result["bytes"]
+        if not all(isinstance(v, (int, float)) and v >= 0 for v in (first, full, size)):
+            raise ValueError("invalid provider result")
+        if not 0 < first <= full < 55 or size < 300:
+            raise ValueError("incomplete provider stream")
+        print(f"A07_EDGE_PROBE: first_audio_s={first:.2f} full_audio_s={full:.2f} "
+              f"audio_bytes={int(size)} (one fixed external TTS request, no GPT)", flush=True)
+    except (OSError, ValueError, IndexError, TypeError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        print("A07_EDGE_PROBE: unavailable (no private error printed)", flush=True)
+
+
+def sample(seconds, window_seconds, with_edge_probe=False):
+    print("A07_DIAG: no config changes or GPT calls; one external Edge TTS call only with --edge-probe", flush=True)
     for name in (SERVER, GATEWAY, TUNNEL):
         print("A07_CONTAINER: " + name + " " + short_state(name), flush=True)
     data = {name: [] for name in (SERVER, GATEWAY, TUNNEL)}
@@ -200,9 +238,10 @@ def sample(seconds, window_seconds):
             print(f"A07_RESOURCE: {name} unavailable", flush=True)
     raw = run(["docker", "logs", "--timestamps", "--since", f"{window_seconds}s",
                "--tail", "1500", SERVER], seconds=20)
-    counts, gaps = classify(raw)
+    counts, _ = classify(raw)
     phase_counts, phases = pipeline_timings(raw)
-    print("A07_EVENTS_15M: " + " ".join(f"{key}={value}" for key, value in counts.items()), flush=True)
+    print(f"A07_EVENTS_WINDOW_{window_seconds}S: " + " ".join(
+        f"{key}={value}" for key, value in counts.items()), flush=True)
     print(f"A07_TTS_WINDOW_{window_seconds}S: " + " ".join(f"{key}={value}" for key, value in phase_counts.items()), flush=True)
     for kind, values in phases.items():
         if values:
@@ -210,12 +249,17 @@ def sample(seconds, window_seconds):
                   f"max_s={max(values):.1f} (approx, concurrent sessions can overlap)", flush=True)
         else:
             print(f"A07_TIMING_{kind}: unavailable", flush=True)
-    if gaps:
-        print(f"A07_GAP_ASR_TO_FIRST_TTS_LOG: n={len(gaps)} "
-              f"median_s={statistics.median(gaps):.1f} max_s={max(gaps):.1f} "
-              "(approx, not full round-trip latency)", flush=True)
+    # Derive total only from the SAME accepted ASR->GPT->FIRST event triple.
+    # Do not use the historical timestamp-sorted ASR/TTS heuristic here.
+    paired = [ag + gf for ag, gf in zip(phases["ASR_TO_GPT"], phases["GPT_TO_FIRST_TTS"])]
+    if paired:
+        print(f"A07_GAP_ASR_TO_FIRST_TTS_LOG: n={len(paired)} "
+              f"median_s={statistics.median(paired):.1f} max_s={max(paired):.1f} "
+              "(same candidate turn; not full round-trip)", flush=True)
     else:
-        print("A07_GAP_ASR_TO_FIRST_TTS_LOG: unavailable (no matching INFO milestones)", flush=True)
+        print("A07_GAP_ASR_TO_FIRST_TTS_LOG: unavailable (no unambiguous candidate turn)", flush=True)
+    if with_edge_probe:
+        edge_probe()
     tunnel_raw = run(["docker", "logs", "--since", "15m", "--tail", "500", TUNNEL], seconds=20).lower()
     if tunnel_raw:
         patterns = {
@@ -233,9 +277,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=int, default=12, help="interval between first and last CPU sample (4..60)")
     ap.add_argument("--window", type=int, default=180, help="log lookback seconds (60..900); use one quiet short 4B voice turn")
+    ap.add_argument("--edge-probe", action="store_true", help="one non-paid network request to Edge TTS; no GPT request")
     args = ap.parse_args()
     if not 4 <= args.seconds <= 60:
         ap.error("--seconds must be between 4 and 60")
     if not 60 <= args.window <= 900:
         ap.error("--window must be between 60 and 900")
-    sample(args.seconds, args.window)
+    sample(args.seconds, args.window, args.edge_probe)
