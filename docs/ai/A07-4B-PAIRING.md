@@ -65,6 +65,28 @@ bash tools/ai/a07-device.sh rollback
 
 Rollback stops only A07 changes, restores A03 config and A04 original identity/Caddyfile, restarts only A03 and the A04 gateway; other VPS projects and tunnel container remain intact. The real board's new OTA URL will stop working until it is reconfigured, because rollback intentionally restores the synthetic-only gate. No firmware writing is performed.
 
+## 2.5. A07 ConnectionResetError / interrupted deployment recovery (2026-11-23)
+
+A real target VPS reported `ConnectionResetError: [Errno 104] Connection reset by peer` during A07's first gateway deployment; the previous script entered its best-effort A04/A05/A06 restore path but did **not** verify health and left `/opt/s3-voice-ai-a07` present. This is **not** proof of a GPT provider or 4B failure. Do not repeat `stage` on a stale state and do not erase any existing snapshots.
+
+Fix in this same PR: Docker `Started` is no longer considered gateway-ready. `gateway_restart` probes the existing A04 deny path until it returns HTTP 403, and the actual A04 OTA/WSS 200/101/403 smoke has bounded retries for transient reset/connection errors. `restore_original` only restarts a server if its configuration changed, then *must verify* the restored gateway and OTA/WSS before claiming success. Interruption snapshots remain root-only.
+
+To reconcile the **already failed** deployment on the target VPS, first fetch/verify a CI-reviewed current A07 commit then run, in the root Shell:
+
+```bash
+# Read-only visibility (without printing any secret):
+docker ps --format '{{.Names}}  {{.Status}}' | grep -E '^s3-voice-ai-(server|gateway|tunnel)\b' || true
+curl --noproxy '*' -sS -o /dev/null -w 'A03_OTA_HTTP=%{http_code}\n' http://127.0.0.1:18003/xiaozhi/ota/
+curl --noproxy '*' -sS -o /dev/null -w 'A04_DEFAULT_DENY_HTTP=%{http_code}\n' http://127.0.0.1:18080/
+# After switching to the reviewed updated source checkout:
+bash tools/ai/a07-device.sh recover
+bash tools/ai/a07-device.sh preflight
+```
+
+Expected after healthy recovery: `A07_OK: verified: original A04 identity and A05/A06 configuration restored; OTA/WSS 200/101/403 PASS`, then `A07_OK: interrupted stage archived ...`, then `A07_OK: A04 synthetic ingress, A05 GPT and A06 voice baseline checked; no edits`. `recover` archives the interrupted A07 private directory under `/opt/s3-voice-ai/a07-aborted-<UTC>` (mode 0700), retains all private snapshots, and does not overwrite A05/A06 API credentials. The previous *enrollment* secret is not reused; the board must use the new private OTA URL from a fresh `stage` if it had already been entered.
+
+If `recover` reports `A07_RECOVERY_UNVERIFIED`, STOP; collect only container statuses, redacted service logs and HTTP status codes, not secret URL/identity. Do **not** force-delete the A07 directory or rerun `stage`. A07 remains unaccepted until actual real 4B enrollment + voice is proven.
+
 ## 3. Acceptance levels / GDGS
 
 | Gate | Meaning |
