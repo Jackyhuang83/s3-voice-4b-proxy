@@ -29,12 +29,37 @@ assert counts["WS_CONN_FAIL"] == 1
 assert counts["WS_DISCONNECT"] == 1
 assert gaps == [6.5]
 phase_counts, phases = module.pipeline_timings(raw)
-assert phase_counts == {"TTS_READY": 1, "TTS_RETRY": 1}
+assert phase_counts == {"TTS_READY": 1, "TTS_RETRY": 1, "MATCHED_TURNS": 1, "AMBIGUOUS_TURNS": 0, "UNMATCHED_FIRST_TTS": 0}
 assert phases["ASR_TO_GPT"] == [0.5]
 assert phases["GPT_TO_TTS_READY"] == [3.0]
 assert phases["GPT_TO_FIRST_TTS"] == [6.0]
 assert "SECRET_PERSONAL_USER_SPEECH" not in repr(phase_counts)
 assert "SECRET_TTS_AUDIO_FILE" not in repr(phases)
+
+# A pair must never be stitched across another utterance. Previously this
+# could falsely yield 40s+ "GPT latency" despite a fast earlier round trip.
+interleaved = "\\n".join([
+    "2026-11-23T12:00:00Z 识别文本: OLD_PRIVATE_QUESTION",
+    "2026-11-23T12:00:00.100000Z 大模型收到用户消息: OLD_QUESTION",
+    "2026-11-23T12:00:40Z 识别文本: NEW_PRIVATE_QUESTION",
+    "2026-11-23T12:00:40.100000Z 大模型收到用户消息: NEW_QUESTION",
+    "2026-11-23T12:00:42Z 语音生成成功: NEW_PRIVATE_ANSWER",
+    "2026-11-23T12:00:43Z 发送第一段语音: NEW_PRIVATE_ANSWER",
+])
+new_counts, new_phases = module.pipeline_timings(interleaved)
+assert new_counts["AMBIGUOUS_TURNS"] == 1
+assert new_counts["MATCHED_TURNS"] == 1
+assert len(new_phases["GPT_TO_FIRST_TTS"]) == 1
+assert abs(new_phases["GPT_TO_FIRST_TTS"][0] - 2.9) < 0.01
+assert len(new_phases["GPT_TO_TTS_READY"]) == 1
+assert "OLD_PRIVATE" not in str(new_counts) + str(new_phases)
+
+# Without ASR/GPT anchors, standalone TTS log must not produce invented durations.
+lonely = "2026-11-23T12:00:00Z 发送第一段语音: STALE_SECRET"
+lonely_counts, lonely_phases = module.pipeline_timings(lonely)
+assert lonely_counts["UNMATCHED_FIRST_TTS"] == 1
+assert not lonely_phases["GPT_TO_FIRST_TTS"]
+
 assert module.timestamp("nonsense") is None
 counts2, gaps2 = module.classify("2026-11-23T12:00:00Z unrelated private text\n")
 assert counts2["ASR"] == 0 and not gaps2
