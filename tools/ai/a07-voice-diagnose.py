@@ -23,7 +23,7 @@ MARKS = (
 )
 ALARMS = {
     "ASR_FAIL": ("VOSK语音识别失败", "识别失败", "合并后的PCM数据为空"),
-    "TTS_FAIL": ("Edge TTS请求失败", "语音生成失败", "Failed to generate TTS file"),
+    "TTS_FAIL": ("语音生成失败:", "语音生成失败：", "Failed to generate TTS file"),
     "AUDIO_SEND_FAIL": ("发送音频失败", "音频发送循环异常", "audio_play_priority_thread:"),
     "LLM_FAIL": ("LLM 处理出错", "LLM stream processing error"),
     "WS_CONN_FAIL": ("Connection error:", "WebSocket连接失败", "websocket connection closed"),
