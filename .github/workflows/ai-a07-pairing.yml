@@ -113,6 +113,17 @@ jobs:
           assert c['selected_module']['ASR']=='VoskASR'
           assert c['selected_module']['TTS']=='EdgeTTS'
           print('A07_ROLLBACK_PASS: generic GPT, native Vosk and EdgeTTS preserved')"
+      - name: Reproduce interrupted A07 staging and verify one-command recovery
+        run: |
+          sudo bash tools/ai/a07-device.sh stage
+          sudo bash tools/ai/a07-device.sh recover
+          sudo bash tools/ai/a07-device.sh preflight
+          sudo python3 tests/ai/a04_gateway_smoke.py \
+            --identity /opt/s3-voice-ai-edge/identity.json \
+            --origin http://127.0.0.1:18080
+          test ! -e /opt/s3-voice-ai-a07
+          sudo sh -c "test -d /opt/s3-voice-ai/a07-aborted-*"
+          echo 'A07_RECOVER_PASS: aborted pairing archived, original OTA/WSS restored, new preflight unblocked'
       - name: Stop only ephemeral A03/A04 containers
         if: always()
         run: |
