@@ -113,6 +113,45 @@ def classify(raw):
     return counts, gaps
 
 
+def pipeline_timings(raw):
+    """Best-effort timings from ORIGINAL INFO milestones, never log contents.
+
+    Not correlation-safe when concurrent sessions interleave. GPT->TTS_READY
+    combines LLM streaming, speech generation and Opus encoding; it is NOT
+    a separate GPT latency or Edge TTS wall clock measurement.
+    """
+    phases = {"ASR_TO_GPT": [], "GPT_TO_FIRST_TTS": [], "GPT_TO_TTS_READY": []}
+    counts = {"TTS_READY": 0, "TTS_RETRY": 0}
+    asr_at = gpt_at = None
+    for line in raw.splitlines():
+        when = timestamp(line)
+        if "语音生成失败" in line and re.search(r"语音生成失败[0-9]+次", line):
+            counts["TTS_RETRY"] += 1
+        if "语音生成成功:" in line or "语音生成成功：" in line:
+            counts["TTS_READY"] += 1
+            if gpt_at is not None and when is not None:
+                gap = when - gpt_at
+                if 0 <= gap <= 120:
+                    phases["GPT_TO_TTS_READY"].append(gap)
+            continue
+        if "识别文本:" in line or "识别文本：" in line:
+            asr_at = when
+            gpt_at = None
+        elif "大模型收到用户消息:" in line:
+            if asr_at is not None and when is not None:
+                gap = when - asr_at
+                if 0 <= gap <= 120:
+                    phases["ASR_TO_GPT"].append(gap)
+            gpt_at = when
+        elif "发送第一段语音:" in line and gpt_at is not None and when is not None:
+            gap = when - gpt_at
+            if 0 <= gap <= 120:
+                phases["GPT_TO_FIRST_TTS"].append(gap)
+            gpt_at = None
+            asr_at = None
+    return counts, phases
+
+
 def sample(seconds):
     print("A07_DIAG: read-only 4B speech latency snapshot; no API request or configuration change", flush=True)
     for name in (SERVER, GATEWAY, TUNNEL):
@@ -133,7 +172,15 @@ def sample(seconds):
     raw = run(["docker", "logs", "--timestamps", "--since", "15m",
                "--tail", "1500", SERVER], seconds=20)
     counts, gaps = classify(raw)
+    phase_counts, phases = pipeline_timings(raw)
     print("A07_EVENTS_15M: " + " ".join(f"{key}={value}" for key, value in counts.items()), flush=True)
+    print("A07_TTS_15M: " + " ".join(f"{key}={value}" for key, value in phase_counts.items()), flush=True)
+    for kind, values in phases.items():
+        if values:
+            print(f"A07_TIMING_{kind}: n={len(values)} median_s={statistics.median(values):.1f} "
+                  f"max_s={max(values):.1f} (approx, concurrent sessions can overlap)", flush=True)
+        else:
+            print(f"A07_TIMING_{kind}: unavailable", flush=True)
     if gaps:
         print(f"A07_GAP_ASR_TO_FIRST_TTS_LOG: n={len(gaps)} "
               f"median_s={statistics.median(gaps):.1f} max_s={max(gaps):.1f} "
