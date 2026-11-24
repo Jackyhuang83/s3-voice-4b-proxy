@@ -96,6 +96,9 @@ class ManagerOnlyContract(unittest.TestCase):
         self.assertIn("bridge-rollback) bridge_rollback", SCRIPT)
         self.assertIn("identity.json", SCRIPT)
         self.assertIn("hmac.compare_digest", SCRIPT)
+        self.assertIn("HDEL sys:params server.secret server.websocket server.ota server.auth.enabled", SCRIPT)
+        self.assertNotIn("FLUSHALL", SCRIPT)
+        self.assertNotIn("FLUSHDB", SCRIPT)
         self.assertIn("original 4B unchanged", SCRIPT)
         self.assertNotIn("MYSQL_ROOT_PASSWORD: 123456", COMPOSE)
 
