@@ -19,6 +19,8 @@
 | P1 isolated Manager-Only pilot | **40%** | P1-1 pinned 3-service Compose/isolated installer **20%**; P1-2 six-digit OTA, memory/swap and rollback **20%** | P0 passes | New manager+MySQL+Redis healthy with original container IDs unchanged, OTA 200+six digits+token, `/ota/activate` 202; resident memory and swap within guards |
 | P2 original-voice linkage & real iPhone | **35%** | P2-1 explicit production-key HMAC parity bridge **17.5%**; P2-2 separately scoped public OTA + iPhone binding/voice/rollback **17.5%** | P1 passes | New manager token verified against existing voice key, public isolated OTA 200, binding 202→200, WebSocket 101, actual iPhone audio PASS and existing 4B still works |
 
+Dedicated GitHub CI now starts the three stock containers on a disposable runner, waits for the real Java OTA and `sys_params` schema, and checks six-digit/Token/202 behavior; **CI is not production VPS installation**. A previous Docker run exposed a race where the static manager-web homepage returned HTTP 200 before Liquibase created `sys_params`; readyness now requires the Java OTA and schema. CI cleanup is confined to the disposable runner.
+
 Code may be consolidated in **existing PR #28** to minimize PR churn. CI source/static checks do not complete a phase. The last actual deployment attempt correctly ended `A09_BLOCKED` before downloads or filesystem changes; progress must remain at the P0 read-only preflight gate until retested.
 
 ## Actual resource baseline and fail-closed limits
