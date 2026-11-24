@@ -116,7 +116,7 @@ class ManagerOnlyContract(unittest.TestCase):
         # The incident is a resource stop, not proof of failed Java readiness.
         self.assertNotIn("manager unhealthy after isolated configuration", SCRIPT)
         self.assertIn('test "$((now-was))" -le 131072', SCRIPT)
-        block = SCRIPT.split('diagnose() {', 1)[1].split('\\n}', 1)[0]
+        block = SCRIPT.split('diagnose() {', 1)[1].split('\n}', 1)[0]
         for forbidden in ("docker pull", "mkdir", "comp up", "comp stop", "comp restart", "sql_exec", "chmod", "cp "):
             self.assertNotIn(forbidden, block)
 
