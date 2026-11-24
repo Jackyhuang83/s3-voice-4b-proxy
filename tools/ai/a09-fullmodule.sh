@@ -81,6 +81,10 @@ manager_secret() {
 sql_exec() {
   comp exec -T mysql sh -ec 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot xiaozhi_esp32_server' >/dev/null
 }
+invalidate_manager_params() {
+  # Stock SysParamsRedis uses the hash sys:params. Do not flush the whole Redis DB.
+  comp exec -T redis redis-cli HDEL sys:params server.secret server.websocket server.ota server.auth.enabled >/dev/null
+}
 wait_manager() {
   local code
   for _ in $(seq 1 90); do
@@ -158,6 +162,7 @@ install() {
     "UPDATE sys_params SET param_value='$UNBRIDGED_WSS' WHERE param_code='server.websocket';" \
     "UPDATE sys_params SET param_value='http://127.0.0.1:19002/xiaozhi/ota/' WHERE param_code='server.ota';" \
     "UPDATE sys_params SET param_value='true' WHERE param_code='server.auth.enabled';" | sql_exec
+  invalidate_manager_params
   comp restart manager >/dev/null
   wait_manager || die 'manager unhealthy after isolated configuration'
   local_activation_probe || die 'stock six-digit OTA contract did not pass'
@@ -206,6 +211,7 @@ bridge_rollback() {
   printf '%s\n' \
     "UPDATE sys_params SET param_value='$old_secret' WHERE param_code='server.secret';" \
     "UPDATE sys_params SET param_value='$UNBRIDGED_WSS' WHERE param_code='server.websocket';" | sql_exec
+  invalidate_manager_params
   unset old_secret
   comp restart manager >/dev/null
   wait_manager || die 'pilot manager unhealthy after bridge rollback'
@@ -240,6 +246,7 @@ assert re.fullmatch(r'wss://[A-Za-z0-9_.-]+/xiaozhi/v1/[a-f0-9]{64}',url.group(1
 print("UPDATE sys_params SET param_value='"+key.group(1)+"' WHERE param_code='server.secret';")
 print("UPDATE sys_params SET param_value='"+url.group(1)+"' WHERE param_code='server.websocket';")
 PYSQL
+  invalidate_manager_params
   # Never restart or reconfigure production server/gateway/tunnel.
   if ! comp restart manager >/dev/null || ! wait_manager || ! bridge_verify; then
     bridge_rollback
