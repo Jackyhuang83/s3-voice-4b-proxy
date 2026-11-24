@@ -75,6 +75,11 @@ class ManagerOnlyContract(unittest.TestCase):
         self.assertNotIn('cp "$ROOT/', SCRIPT)
         self.assertIn('wait_manager || die', SCRIPT)
 
+    def test_wait_for_stock_java_ota_and_schema_not_just_static_homepage(self):
+        self.assertIn('http://127.0.0.1:19002/xiaozhi/ota/', SCRIPT)
+        self.assertIn('secret="$(manager_secret 2>/dev/null || true)"', SCRIPT)
+        self.assertNotIn("sS -L -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/", SCRIPT)
+
     def test_activation_is_stock_local_only_and_unbridged_by_default(self):
         self.assertIn("wss://manager-only-not-ready.invalid/xiaozhi/v1/", SCRIPT)
         self.assertIn("activation", SCRIPT)
