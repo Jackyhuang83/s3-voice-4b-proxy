@@ -68,10 +68,10 @@ preflight() {
   msg PREFLIGHT_PASS 'read-only; no image pull, file change, or service restart'
 }
 image_digest() {
-  local image="$1" repo="\${1%%:*}" digest
+  local image="$1" repo="${1%%:*}" digest
   docker pull "$image" >&2 || die 'official version image pull failed'
-  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | grep -F "\${repo}@sha256:" | head -n 1 || true)"
-  [[ "$digest" == "\${repo}@sha256:"* ]] || die 'image digest not pinned'
+  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | grep -F "${repo}@sha256:" | head -n 1 || true)"
+  [[ "$digest" == "${repo}@sha256:"* ]] || die 'image digest not pinned'
   printf '%s' "$digest"
 }
 manager_secret() {
@@ -264,7 +264,7 @@ stop() {
   baseline
   msg STOP_PASS 'stopped only three Manager-Only containers; no data deletion or production changes'
 }
-case "\${1:-}" in
+case "${1:-}" in
   preflight) preflight ;;
   install) install ;;
   bridge) bridge ;;
