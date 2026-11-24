@@ -36,6 +36,16 @@ class FullPilotContract(unittest.TestCase):
         for service in ('server', 'manager', 'mysql', 'redis'):
             self.assertRegex(COMPOSE, rf'(?m)^  {service}:$')
 
+    def test_remote_host_is_separate_and_persisted(self):
+        self.assertIn('preflight-remote|install-remote) HOST_MODE=remote', INSTALL)
+        self.assertIn('refuse remote mode on a production S3-Voice host', INSTALL)
+        self.assertIn('docker inspect "$i" >/dev/null', INSTALL)
+        self.assertIn('printf \'%s\\n\' "$HOST_MODE" > "$ROOT/.host-mode"', INSTALL)
+        self.assertIn('if test -r "$ROOT/.host-mode"', INSTALL)
+        self.assertIn('less than ~4GB physical RAM', INSTALL)
+        self.assertIn('A09_BLOCKED', PLAN)
+        self.assertIn('P0 actual-vps resource gate', PLAN)
+
     def test_credentials_not_hardcoded(self):
         self.assertIn('openssl rand -hex 24', INSTALL)
         self.assertIn('chmod 600 "$ENVFILE"', INSTALL)
