@@ -36,12 +36,12 @@ baseline_ids() {
 memory_guard() {
   local avail
   avail="$(mem_available)"
-  test "$avail" -ge 650000 || die 'less than ~635MiB MemAvailable after pilot startup; pilot must stop'
+  test "$avail" -ge 650000 || { msg BLOCKED 'less than ~635MiB MemAvailable after pilot startup; pilot must stop' >&2; return 1; }
   if test -r "$ROOT/.baseline-swap"; then
     local now was
     now="$(swap_used)"
     was="$(cat "$ROOT/.baseline-swap")"
-    test "$((now-was))" -le 131072 || die 'swap use increased by >128MiB; pilot must stop'
+    test "$((now-was))" -le 131072 || { msg BLOCKED 'swap use increased by >128MiB; pilot must stop' >&2; return 1; }
   fi
 }
 preflight() {
