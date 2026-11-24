@@ -88,7 +88,7 @@ invalidate_manager_params() {
 wait_manager() {
   local code
   for _ in $(seq 1 90); do
-    memory_guard || return 1
+    memory_guard || return 73
     # The manager-web homepage can become HTTP 200 while Java/Liquibase is still
     # initializing. Probe the real stock Java OTA endpoint and initialized schema.
     code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/xiaozhi/ota/ 2>/dev/null || true)"
@@ -173,7 +173,14 @@ install() {
     "UPDATE sys_params SET param_value='true' WHERE param_code='server.auth.enabled';" | sql_exec
   invalidate_manager_params
   comp restart manager >/dev/null
-  wait_manager || die 'manager unhealthy after isolated configuration'
+  # Return code 73 means the resource protection tripped; do not mislabel it
+  # as a Java/HTTP health check failure. The EXIT trap stops only the pilot.
+  local wait_rc=0
+  wait_manager || wait_rc="$?"
+  if [[ "$wait_rc" -eq 73 ]]; then
+    die 'resource guard halted pilot after isolated configuration; not evidence of Java failure'
+  fi
+  [[ "$wait_rc" -eq 0 ]] || die 'manager API or schema failed readiness after isolated configuration'
   local_activation_probe || die 'stock six-digit OTA contract did not pass'
   memory_guard
   test "$(baseline_ids)" = "$ids" || die 'original 4B/gateway/tunnel container IDs unexpectedly changed'
@@ -268,6 +275,37 @@ PYSQL
   baseline
   msg BRIDGE_PASS 'manager HMAC matches existing voice; no public route or iPhone binding yet'
 }
+diagnose() {
+  # Strictly read-only even after failed install: never print tokens, env or SQL.
+  test "$(id -u)" -eq 0 || die 'run as root'
+  for x in docker awk curl; do need "$x"; done
+  local total available swap_current swap_at_install state name ota code
+  total="$(awk '/^MemTotal:/ {print $2;exit}' /proc/meminfo)"
+  available="$(mem_available)"
+  swap_current="$(swap_used)"
+  msg DIAG_MEMORY "MemTotal_KiB=$total MemAvailable_KiB=$available SwapUsed_KiB=$swap_current"
+  if test -r "$ROOT/.baseline-swap"; then
+    swap_at_install="$(cat "$ROOT/.baseline-swap")"
+    if [[ "$swap_at_install" =~ ^[0-9]+$ ]]; then
+      msg DIAG_SWAP "at_install_KiB=$swap_at_install now_KiB=$swap_current delta_KiB=$((swap_current-swap_at_install))"
+    else
+      msg DIAG_SWAP "invalid_baseline_snapshot"
+    fi
+  else
+    msg DIAG_SWAP "no_install_snapshot"
+  fi
+  for name in s3-voice-manager-manager-1 s3-voice-manager-mysql-1 s3-voice-manager-redis-1; do
+    state="$(docker inspect -f '{{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>/dev/null || true)"
+    msg DIAG_PILOT "$name ${state:-not_created}"
+  done
+  for name in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do
+    state="$(docker inspect -f '{{.State.Status}} oom={{.State.OOMKilled}}' "$name" 2>/dev/null || true)"
+    msg DIAG_BASELINE "$name ${state:-missing}"
+  done
+  code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:18003/xiaozhi/ota/ 2>/dev/null || true)"
+  msg DIAG_BASELINE_OTA "HTTP_${code:-000}"
+  msg DIAG_RESULT "read-only snapshot; cannot attribute swap growth to a specific container without runtime measurements"
+}
 status() {
   test -f "$ENVFILE" || die 'Manager-Only not installed'
   baseline
@@ -288,6 +326,7 @@ case "${1:-}" in
   bridge) bridge ;;
   bridge-rollback) bridge_rollback ;;
   status) status ;;
+  diagnose) diagnose ;;
   stop) stop ;;
-  *) printf 'Usage: sudo bash tools/ai/a09-fullmodule.sh preflight|install|bridge|bridge-rollback|status|stop\n' >&2; exit 2 ;;
+  *) printf 'Usage: sudo bash tools/ai/a09-fullmodule.sh preflight|install|bridge|bridge-rollback|status|diagnose|stop\n' >&2; exit 2 ;;
 esac
