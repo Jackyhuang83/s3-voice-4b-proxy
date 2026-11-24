@@ -89,8 +89,17 @@ wait_manager() {
   local code
   for _ in $(seq 1 90); do
     memory_guard || return 1
-    code="$(curl --noproxy '*' -sS -L -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/ 2>/dev/null || true)"
-    [[ "$code" == 200 ]] && return 0
+    # The manager-web homepage can become HTTP 200 while Java/Liquibase is still
+    # initializing. Probe the real stock Java OTA endpoint and initialized schema.
+    code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/xiaozhi/ota/ 2>/dev/null || true)"
+    if [[ "$code" == 200 ]]; then
+      local secret
+      secret="$(manager_secret 2>/dev/null || true)"
+      if [[ "$secret" =~ ^[[:alnum:]_-]{16,128}$ ]]; then
+        unset secret
+        return 0
+      fi
+    fi
     sleep 2
   done
   return 1
