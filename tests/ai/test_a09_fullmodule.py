@@ -107,6 +107,19 @@ class ManagerOnlyContract(unittest.TestCase):
         self.assertIn("original 4B unchanged", SCRIPT)
         self.assertNotIn("MYSQL_ROOT_PASSWORD: 123456", COMPOSE)
 
+    def test_postmortem_is_read_only_and_swap_guard_remains_strict(self):
+        self.assertIn('diagnose) diagnose ;;', SCRIPT)
+        self.assertIn('DIAG_SWAP', SCRIPT)
+        self.assertIn('DIAG_BASELINE_OTA', SCRIPT)
+        self.assertIn("memory_guard || return 73", SCRIPT)
+        self.assertIn("resource guard halted pilot", SCRIPT)
+        # The incident is a resource stop, not proof of failed Java readiness.
+        self.assertNotIn("manager unhealthy after isolated configuration", SCRIPT)
+        self.assertIn('test "$((now-was))" -le 131072', SCRIPT)
+        block = SCRIPT.split('diagnose() {', 1)[1].split('\\n}', 1)[0]
+        for forbidden in ("docker pull", "mkdir", "comp up", "comp stop", "comp restart", "sql_exec", "chmod", "cp "):
+            self.assertNotIn(forbidden, block)
+
     def test_fixed_hmac_vector_matches_upstream_token_algorithm(self):
         # This checks the documented HMAC signature shape, not live Java/Python interoperability.
         secret = b"a09_source_contract_only"
