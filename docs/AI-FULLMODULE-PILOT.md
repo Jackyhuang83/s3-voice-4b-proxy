@@ -33,6 +33,26 @@ Measured on existing shared VPS (owner read-only output, 2026-11-25):
 - After new containers start, A09 aborts and **stops only the pilot** if `MemAvailable < 650,000 KiB` (~635MiB), or swap usage has risen >128MiB over the baseline; it also checks original production container IDs. Resource limits protect against worst-case memory claims but do not guarantee zero host interference. **Never increase Swap or weaken limits simply to force installation.**
 - No Docker global settings, firewall, SSH, Cloudflare or production config changes.
 
+## 2026-11-25 shared-VPS Manager-Only incident and P1 HOLD
+
+**Observed output from actual VPS (user):**
+```text
+A09_BLOCKED: swap use increased by >128MiB; pilot must stop
+A09_BLOCKED: manager unhealthy after isolated configuration
+A09_PILOT_STOPPED: Manager-Only containers stopped; original 4B untouched
+```
+
+The first line is the precise failure: swap use increased beyond the **unchanged** 128MiB A09 guard after the test manager was configured/restarted. The "manager unhealthy" line was misleading because `wait_manager` returned on memory guard failure; the revised installer distinguishes a resource-trip from Java/HTTP readiness failure. The trap stopped the three pilot containers and retained their isolated database for diagnosis. **Do not run `install` again on this host, do not delete `/opt/s3-voice-manager`, and do not run `bridge`.** The original A03/A04 production stack was not modified by the installer, but its *current health* should be checked separately.
+
+**Read-only postmortem** on the same host, using a reviewed/current checkout:
+```bash
+sudo bash tools/ai/a09-fullmodule.sh diagnose
+```
+
+The `diagnose` command prints total/available physical memory, current Swap used, delta relative to the preserved preinstall baseline, three pilot containers' stopped/oom/exit status, existing 4B/gateway/tunnel status, and existing local OTA HTTP status. It reads no passwords or tokens; it does **not** restart, create, delete or mutate containers. Note that Swap may remain used after containers stop; a still-high Swap total does not by itself show current swap-in/swap-out rate or prove Java was the cause. Without the running-stage memory trend, exact attribution to MySQL/Redis/Java is **not yet established**.
+
+**P1 live deployment acceptance: BLOCKED**; CI three-container activation PASS does not override the current host resource-trip. No memory/swap threshold changes, no swap-off, no dangerous `docker system prune`, no erasure of new data and no restart of HomeSphere/MiniProbe/4B. Diagnose first; then assess whether official upstream component configuration can reduce peak consumption *with documented evidence* or use a separate VPS if resource headroom cannot be demonstrated. All stage weights unchanged.
+
 ## Execution modes and acceptance gates
 
 From the reviewed checkout on the **existing** Debian 13 VPS:
