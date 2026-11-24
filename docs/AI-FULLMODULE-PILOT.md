@@ -1,49 +1,69 @@
-# S3-Voice A09: Official full-module pilot (2026-11-24)
+# S3-Voice A09 — Manager-Only pilot (2026-11-25)
 
-## Scope and immutable baseline
+> This retains the original filename for PR #28 traceability. The **full-module parallel-server proposal was superseded** after the existing VPS failed the 4GB physical-RAM guard. This revision contains **no second Python voice server**.
 
-Preserve the existing XiaoZhi v0.9.8 A03/A04/A07 deployment and physical Waveshare ESP32-S3 4B. Do not reset, flash or migrate it. The pilot uses a separate Docker Compose project, network, database, credentials and root-owned files under `/opt/s3-voice-fullpilot`. A09 is optional; its goal is to establish whether the *Hi XiaoZhi* iOS application can use stock six-digit activation.
+## Scope and safety baseline
 
-## Roadmap (weights fixed before deployment)
+- Existing production: official `xiaozhi-server v0.9.8` (A03), A04 Caddy/Tunnel, A07 Waveshare 4B; GPT/Vosk/EdgeTTS, `voice.cncloudx.com`, HomeSphere and MiniProbe **must not be modified or restarted**.
+- New pilot: one isolated official `web_0.9.8` image (manager-api and manager-web), plus pinned MySQL 8.4 and Redis 8.0. No duplicate `xiaozhi-server` container, no extra 8000/8003 listeners, no model files or API keys.
+- Manager code handles six-digit `activation.code`, `POST /ota/activate` returning 202 before binding and 200 after binding, and stock management-console device binding; MySQL stores permanent binding and Redis stores pending code.
+- Only one public route exists now: **the existing 4B route**. Manager listens solely on `127.0.0.1:19002` until P2. Admin access through owner-controlled SSH tunnel only; no Cloudflare registration or admin UI exposure.
+- The manager's stock HMAC-SHA256 signing routine matches the existing Python server's `AuthManager` *when the manager's `server.secret` equals the server's `server.auth_key` and Device-Id/Client-Id match*. This source-code parity is necessary but **not sufficient** to claim a real iPhone connection.
+- The manager does **not** become the production voice configuration source. The existing server continues using its file-based `.config.yaml`, preserving GPT/Vosk/EdgeTTS and existing hardware.
 
-| Stage | Weight | Planned PRs | Dependencies | Acceptance |
+## Revised P0–P2 plan (weights unchanged; the PR budget is the logical work-plan)
+
+| Phase | Weight | Logical PR work packages | Dependency | Acceptance |
 |---|---:|---|---|---|
-| P0 Audit and readonly preflight | 25% | P0-1 audit and roadmap (12.5%), P0-2 resource preflight (12.5%) | Stable A03/A04/A07 | Official source contract confirmed; target VPS resources and ports checked without changes |
-| P1 Parallel full-module install | 40% | P1-1 pinned Compose/installer (20%), P1-2 isolated health/rollback (20%) | P0 | Official manager, server, MySQL, Redis locally healthy; six-digit activation.code and WebSocket token returned; old container IDs unchanged |
-| P2 iPhone activation | 35% | P2-1 scoped public pilot OTA/WS (17.5%), P2-2 bind/voice/rollback (17.5%) | P1 | Public 200 + six-digit code/token; unbound activate 202, bound activate 200, WS 101, real iPhone microphone/GPT/speaker PASS |
+| P0 official-reuse audit & readonly resource preflight | **25%** | P0-1 official activation/HMAC architecture audit **12.5%**; P0-2 readonly 3.6GiB VPS guard **12.5%** | Existing 4B healthy | Official sources confirmed and actual on-host `A09_PREFLIGHT_PASS`, with no changes |
+| P1 isolated Manager-Only pilot | **40%** | P1-1 pinned 3-service Compose/isolated installer **20%**; P1-2 six-digit OTA, memory/swap and rollback **20%** | P0 passes | New manager+MySQL+Redis healthy with original container IDs unchanged, OTA 200+six digits+token, `/ota/activate` 202; resident memory and swap within guards |
+| P2 original-voice linkage & real iPhone | **35%** | P2-1 explicit production-key HMAC parity bridge **17.5%**; P2-2 separately scoped public OTA + iPhone binding/voice/rollback **17.5%** | P1 passes | New manager token verified against existing voice key, public isolated OTA 200, binding 202→200, WebSocket 101, actual iPhone audio PASS and existing 4B still works |
 
-Code review or CI green alone does not complete a phase. Live acceptance must be reported separately.
+Code may be consolidated in **existing PR #28** to minimize PR churn. CI source/static checks do not complete a phase. The last actual deployment attempt correctly ended `A09_BLOCKED` before downloads or filesystem changes; progress must remain at the P0 read-only preflight gate until retested.
 
-## Official implementation reused
+## Actual resource baseline and fail-closed limits
 
-- Official repository: https://github.com/xinnan-tech/xiaozhi-esp32-server
-- Official full Docker scheme: https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/v0.9.8/docs/Deployment_all.md
-- Official OTA: `main/manager-api/src/main/java/xiaozhi/modules/device/controller/OTAController.java`
-- Official activation: `main/manager-api/src/main/java/xiaozhi/modules/device/service/impl/DeviceServiceImpl.java`
-- Official manager API issues `activation.code` and uses Redis plus the stock manager-web UI to bind devices. The `server.secret` in the isolated manager database is used for the pilot's server config.
-- Upstream `docker-compose_all.yml` is *not* directly deployable to a shared production VPS: it contains public port publishes, mutable `latest` tags and a default database password. A09 resolves release v0.9.8 image tags to digests, creates its own password, caps resources, and binds TCP ports exclusively to 127.0.0.1.
+Measured on existing shared VPS (owner read-only output, 2026-11-25):
+- `MemTotal` about **3.6GiB**, `MemAvailable` about **1.5GiB**, swap in use **103MiB** (1GiB configured); disk free **34GB**.
+- Current S3 voice server about **473MiB**. HomeSphere, MiniProbe and all other services remain operational.
+- Three **new container memory ceilings**, not measured usage: MySQL **384MiB**, Redis **96MiB**, Java manager/API/Web **640MiB**; total cap **1,120MiB**. JVM heap capped at 320MiB; MySQL InnoDB pool at 96MiB. These limits may cause a new pilot service to fail; this is preferable to OOM-killing the existing workload.
+- A09 `preflight` is **read-only**, requiring >=3,400,000 KiB physical RAM, >=1,400,000 KiB available RAM (~1.34GiB), >=5GiB free disk, Docker Engine >=28 and free TCP 19002. It checks old containers and OTA health before pulling images or writing files.
+- After new containers start, A09 aborts and **stops only the pilot** if `MemAvailable < 650,000 KiB` (~635MiB), or swap usage has risen >128MiB over the baseline; it also checks original production container IDs. Resource limits protect against worst-case memory claims but do not guarantee zero host interference. **Never increase Swap or weaken limits simply to force installation.**
+- No Docker global settings, firewall, SSH, Cloudflare or production config changes.
 
-## Deployment host decision (2026-11-25)
+## Execution modes and acceptance gates
 
-**Observed:** Existing S3-Voice VPS returned `A09_BLOCKED: less than ~4GB physical RAM`. This is a correctly enforced safety stop **before image downloads, directory creation or container changes**. Do not bypass by forcing limits/swap. P0 actual-vps resource gate is **BLOCKED**, not passed.
-
-**Plan revision:** Keep the original A03/A04/A07 4B VPS unchanged. Prefer an **independent x86_64 VPS with >=4 GB physical RAM, >=2.3 GiB available RAM, >=10 GiB free disk and Docker Engine >=28**. If no such host exists, pause A09 instead of buying a server for activation alone; an open-source/updated iOS client is a less invasive alternative. P0/P1/P2 acceptance weights and PR budget remain unchanged; only the host placement is revised.
-
-On an independent host use `preflight-remote` and `install-remote`. Remote mode **rejects any pre-existing `s3-voice-ai-{server,gateway,tunnel}` containers** and otherwise uses the same resource, loopback port, image and credentials guards. It never reaches the original VPS or attempts to migrate it. Production-host `preflight`/`install` still require all three existing containers to be running and are intentionally blocked on the undersized VPS.
-
-## Local-only pilot
+From the reviewed checkout on the **existing** Debian 13 VPS:
 
 ```bash
-sudo bash tools/ai/a09-fullmodule.sh preflight-remote   # on independent VPS
-sudo bash tools/ai/a09-fullmodule.sh install-remote     # on independent VPS
+sudo bash tools/ai/a09-fullmodule.sh preflight   # readonly, can still block
+sudo bash tools/ai/a09-fullmodule.sh install     # only after code+CI review and preflight PASS
 sudo bash tools/ai/a09-fullmodule.sh status
+sudo bash tools/ai/a09-fullmodule.sh bridge      # P2 only; deliberate separate operation
+sudo bash tools/ai/a09-fullmodule.sh bridge-rollback
 sudo bash tools/ai/a09-fullmodule.sh stop
 ```
 
-The installer preflight requires x86_64, Docker Engine 28+, either the unchanged existing A03/A04/Tunnel baseline (cohost mode) or absence of all S3-Voice production containers (remote mode), >~4GB total RAM, >=~2.3GiB MemAvailable, >=10GiB free disk, and free 19000/19002/19003 loopback TCP ports. It stops rather than resizing or disabling old services. Production server, gateway, tunnel, GPT/Vosk/EdgeTTS configuration and firmware remain intact. This pilot is strictly local-only until P2; do not copy the existing 4B's private OTA path or AI credentials.
+The script retains its historical filename `a09-fullmodule.sh` to avoid diverging PR history; **it no longer installs a second full voice stack**. Installation creates `/opt/s3-voice-manager` (0700), root-only `.env` (0600) and private database directories; the only host-published service is `127.0.0.1:19002` on a dedicated Docker network. It pins all three images to digests after pulling exact version tags. No new service can bind a public IP.
 
-Pilot UI is loopback `127.0.0.1:19002`; pilot WebSocket `127.0.0.1:19000`; pilot health `127.0.0.1:19003`. Use an SSH tunnel from a Mac for the stock manager-web admin registration. It is deliberately **not** exposed through Cloudflare during P1.
+**Gate A09-P1:** The default manager WebSocket target is deliberately `wss://manager-only-not-ready.invalid/xiaozhi/v1/` so an untested iPhone cannot accidentally talk to the old 4B service. Isolated local synthetic OTA confirms `activation.code` is a six-digit decimal, `websocket.token` exists, and `/ota/activate` returns 202 for unbound devices. This neither exercises AI nor proves real-device binding.
 
-P2 requires an isolated public hostname/strongly authenticated path and a safe OTA/WS routing rule; never expose the admin signup publicly, never reuse the current 4B private bearer path, and never paste manager or AI secrets in chat. The stock pilot's default models do not automatically inherit production GPT/Vosk/EdgeTTS.
+**Gate A09-P2:** `bridge` is explicit and reads the production `server.auth_key`, configured WSS URL and Caddy bearer from root-only existing files. It requires the configured WSS path to match the existing private 256-bit bearer and writes **only** the isolated management DB's `server.secret` and `server.websocket`. A Python HMAC check verifies that manager-issued tokens match the unchanged production server key. It does not change any production file, restart an existing container or open a public port. `bridge-rollback` restores the manager-generated secret and disabled WSS target, leaving voice untouched. Keep the pilot admin page private: its system parameter page may contain the production auth secret.
 
-Stop the pilot using the provided `stop` action; it does not delete its data or alter the original 4B. P2 requires actual iPhone confirmation before any production change.
+**Real iPhone acceptance still requires a separate, new, bearer-protected Caddy OTA route to Manager**; this must not replace the original 4B OTA route. The Hi 小智 client's exact OTA request and WebSocket behavior remains unverified. Use a separately scoped route and verify public 200, six digits, token, activation 202→200, WS 101, and a real voice conversation before acceptance.
+
+## Official evidence
+
+- Pinned official manager OTA: `main/manager-api/src/main/java/xiaozhi/modules/device/controller/OTAController.java`
+- Pinned device activation/token logic: `main/manager-api/src/main/java/xiaozhi/modules/device/service/impl/DeviceServiceImpl.java`
+- Pinned Python HMAC verifier: `main/xiaozhi-server/core/auth.py`
+- Official Docker full example (used as source reference, **not installed**): https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/v0.9.8/main/xiaozhi-server/docker-compose_all.yml
+- Existing production A03/A04 deployment scripts in this repository remain unchanged.
+
+## Rollback and status discipline
+
+- Preflight failure: zero installation changes.
+- Installation failure: stop pilot containers, preserve private data and original running services; do not claim P1 PASS.
+- `stop`: stop only `manager`, `mysql`, `redis`, preserve data; restart/manual cleanup only after diagnosis.
+- `bridge-rollback`: revert only manager DB credentials and URL.
+- Original 4B OTA/WSS and real audible response remain independent acceptance checks. No firmware flash or OTA firmware download is involved.
