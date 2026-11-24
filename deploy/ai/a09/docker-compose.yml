@@ -1,0 +1,77 @@
+name: s3-voice-fullpilot
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:?pin mysql digest}
+    restart: unless-stopped
+    mem_limit: 640m
+    cpus: '0.7'
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?private password required}
+      MYSQL_DATABASE: xiaozhi_esp32_server
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    healthcheck:
+      test: ['CMD-SHELL', 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    volumes: [ './mysql:/var/lib/mysql' ]
+
+  redis:
+    image: ${REDIS_IMAGE:?pin redis digest}
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: '0.3'
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '96mb', '--maxmemory-policy', 'allkeys-lru']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes: [ './redis:/data' ]
+
+  manager:
+    image: ${MANAGER_IMAGE:?pin official web digest}
+    restart: unless-stopped
+    mem_limit: 1152m
+    cpus: '0.8'
+    pids_limit: 512
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_TOOL_OPTIONS: '-Xms128m -Xmx512m'
+      SPRING_DATASOURCE_DRUID_URL: 'jdbc:mysql://mysql:3306/xiaozhi_esp32_server?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true&connectTimeout=30000&socketTimeout=30000'
+      SPRING_DATASOURCE_DRUID_USERNAME: root
+      SPRING_DATASOURCE_DRUID_PASSWORD: ${DB_PASSWORD:?private password required}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: '6379'
+      SPRING_DATA_REDIS_PASSWORD: ''
+    ports:
+      - '127.0.0.1:19002:8002/tcp'
+    volumes:
+      - './uploadfile:/uploadfile'
+
+  server:
+    profiles: [voice]
+    image: ${SERVER_IMAGE:?pin official server digest}
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: '0.8'
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      manager: {condition: service_started}
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - '127.0.0.1:19000:8000/tcp'
+      - '127.0.0.1:19003:8003/tcp'
+    volumes:
+      - './data:/opt/xiaozhi-esp32-server/data'

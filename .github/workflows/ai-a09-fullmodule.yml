@@ -1,0 +1,19 @@
+name: A09 isolated XiaoZhi full-module pilot (static gates)
+on:
+  pull_request:
+    paths:
+      - 'deploy/ai/a09/**'
+      - 'tools/ai/a09-fullmodule.sh'
+      - 'tests/ai/test_a09_fullmodule.py'
+      - 'docs/AI-FULLMODULE-PILOT.md'
+      - '.github/workflows/ai-a09-fullmodule.yml'
+  workflow_dispatch:
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash parsing
+        run: bash -n tools/ai/a09-fullmodule.sh
+      - name: Static scope and credential tests
+        run: python3 -m unittest discover -s tests/ai -p 'test_a09_fullmodule.py' -v
