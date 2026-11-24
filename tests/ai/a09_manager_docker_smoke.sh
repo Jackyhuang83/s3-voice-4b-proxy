@@ -13,7 +13,8 @@ ENVFILE="$TMP/.env"
 comp() { docker compose -p "$NAME" -f "$CONF" --env-file "$ENVFILE" "$@"; }
 cleanup() {
   if test -f "$ENVFILE"; then comp down -v --remove-orphans >/dev/null 2>&1 || true; fi
-  rm -rf "$TMP"
+  # Test-only database files may belong to root/mysql; GitHub runner has sudo.
+  sudo rm -rf -- "$TMP"
 }
 trap cleanup EXIT
 
@@ -35,19 +36,31 @@ redis_image="$(get_digest 'redis:8.0')"
 chmod 600 "$ENVFILE"
 comp config --quiet
 comp up -d --no-build mysql redis manager
-ready=0
-for _ in $(seq 1 150); do
-  code="$(curl --noproxy '*' -sS -L -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/ 2>/dev/null || true)"
-  if test "$code" = 200; then ready=1; break; fi
-  sleep 2
-done
-if test "$ready" != 1; then
+# Spring homepage can be 200 before Java OTA/Liquibase finishes. Require
+# the real OTA Java endpoint and a manager-generated server.secret in MySQL.
+db_secret() {
+  printf "%s\n" "SELECT param_value FROM sys_params WHERE param_code='server.secret' LIMIT 1;" | \
+    comp exec -T mysql sh -ec 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --batch --skip-column-names -uroot xiaozhi_esp32_server' 2>/dev/null
+}
+wait_ready() {
+  local attempts="$1" code secret
+  for _ in $(seq 1 "$attempts"); do
+    code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/xiaozhi/ota/ 2>/dev/null || true)"
+    if test "$code" = 200; then
+      secret="$(db_secret || true)"
+      [[ "$secret" =~ ^[[:alnum:]_-]{16,128}$ ]] && return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+if ! wait_ready 150; then
   echo 'A09_CI_MANAGER_NOT_READY' >&2
   comp ps
   comp logs --no-color --tail 35 manager | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken)[=:][^ ]+/\1=[REDACTED]/g' || true
   exit 1
 fi
-secret="$(printf "%s\n" "SELECT param_value FROM sys_params WHERE param_code='server.secret' LIMIT 1;" | comp exec -T mysql sh -ec 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --batch --skip-column-names -uroot xiaozhi_esp32_server')"
+secret="$(db_secret)"
 [[ "$secret" =~ ^[[:alnum:]_-]{16,128}$ ]] || { echo 'A09_CI_SECRET_MISSING' >&2; exit 1; }
 unset secret
 printf '%s\n' \
@@ -57,13 +70,7 @@ printf '%s\n' \
   comp exec -T mysql sh -ec 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot xiaozhi_esp32_server' >/dev/null
 comp exec -T redis redis-cli HDEL sys:params server.secret server.websocket server.ota server.auth.enabled >/dev/null
 comp restart manager >/dev/null
-ready=0
-for _ in $(seq 1 90); do
-  code="$(curl --noproxy '*' -sS -L -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:19002/ 2>/dev/null || true)"
-  if test "$code" = 200; then ready=1; break; fi
-  sleep 2
-done
-test "$ready" = 1 || { echo 'A09_CI_MANAGER_RESTART_FAIL' >&2; exit 1; }
+wait_ready 90 || { echo 'A09_CI_MANAGER_RESTART_FAIL' >&2; exit 1; }
 
 python3 - <<'PYOTA'
 import json, secrets, uuid, urllib.error, urllib.request
