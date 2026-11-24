@@ -11,6 +11,15 @@ SOURCE="$(cd "$(dirname "$0")/../.." && pwd)"
 TEMPLATE="$SOURCE/deploy/ai/a09/docker-compose.yml"
 COMPOSE="$ROOT/docker-compose.yml"
 ENVFILE="$ROOT/.env"
+# Host placement is explicit for install; persisted so status/stop remain safe.
+HOST_MODE=cohost
+case "${1:-}" in
+  preflight-remote|install-remote) HOST_MODE=remote ;;
+  *)
+    if test -r "$ROOT/.host-mode"; then HOST_MODE="$(cat "$ROOT/.host-mode")"; fi
+    ;;
+esac
+case "$HOST_MODE" in cohost|remote) ;; *) echo 'A09_BLOCKED: invalid host mode' >&2; exit 1 ;; esac
 IMAGE_PREFIX=ghcr.io/xinnan-tech/xiaozhi-esp32-server
 
 msg() { printf 'A09_%s: %s\n' "$1" "$2"; }
@@ -19,6 +28,16 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing $1"; }
 comp() { docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENVFILE" "$@"; }
 containers_in_scope() {
   local i
+  # Remote mode is for a separate VPS, never one already running S3-Voice production.
+  if [[ "$HOST_MODE" == remote ]]; then
+    for i in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do
+      if docker inspect "$i" >/dev/null 2>&1; then
+        die "$i exists; refuse remote mode on a production S3-Voice host"
+      fi
+    done
+    return 0
+  fi
+  # Cohost mode retains the original live-production health guard.
   for i in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do
     test "$(docker inspect -f '{{.State.Running}}' "$i" 2>/dev/null)" = true || die "$i is not running"
   done
@@ -121,6 +140,8 @@ install() {
   redis_image="$(image_digest 'redis:8.0')"
   test ! -e "$ROOT" || die 'pilot path unexpectedly appeared'
   mkdir -m 700 -p "$ROOT" "$ROOT/data" "$ROOT/mysql" "$ROOT/redis" "$ROOT/uploadfile"
+  printf '%s\n' "$HOST_MODE" > "$ROOT/.host-mode"
+  chmod 600 "$ROOT/.host-mode"
   trap 'a09_install_exit "$?"' EXIT
   chmod 700 "$ROOT" "$ROOT/data" "$ROOT/mysql" "$ROOT/redis" "$ROOT/uploadfile"
   cp "$TEMPLATE" "$COMPOSE"
@@ -173,9 +194,9 @@ stop() {
   msg STOP_PASS 'stopped only pilot containers; no data deletion, 4B baseline untouched'
 }
 case "${1:-}" in
-  preflight) preflight ;;
-  install) install ;;
+  preflight|preflight-remote) preflight ;;
+  install|install-remote) install ;;
   status) status ;;
   stop) stop ;;
-  *) echo 'Usage: sudo bash tools/ai/a09-fullmodule.sh preflight|install|status|stop' >&2; exit 2 ;;
+  *) echo 'Usage: sudo bash tools/ai/a09-fullmodule.sh preflight|install|preflight-remote|install-remote|status|stop' >&2; exit 2 ;;
 esac
