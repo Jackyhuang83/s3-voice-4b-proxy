@@ -215,7 +215,7 @@ bridge_rollback() {
   unset old_secret
   comp restart manager >/dev/null
   wait_manager || die 'pilot manager unhealthy after bridge rollback'
-  rm -f "$ROOT/.bridged"
+  rm -f "$ROOT/.bridged" "$ROOT/.pre-bridge-secret"
   msg BRIDGE_ROLLBACK_PASS 'only new manager DB reverted; original 4B unchanged'
 }
 bridge() {
@@ -243,8 +243,10 @@ url=re.search(r'(?m)^  websocket:\s*["\']?(wss://[^\s"\']+)["\']?\s*$',cfg)
 assert key and url and re.search(r'(?m)^    enabled:\s*true\s*$',cfg), 'production auth baseline mismatch'
 assert url.group(1)=='wss://'+ident['hostname']+'/xiaozhi/v1/'+ident['pair_secret'], 'private WSS route mismatch'
 assert re.fullmatch(r'wss://[A-Za-z0-9_.-]+/xiaozhi/v1/[a-f0-9]{64}',url.group(1)), 'unexpected URL shape'
+print("START TRANSACTION;")
 print("UPDATE sys_params SET param_value='"+key.group(1)+"' WHERE param_code='server.secret';")
 print("UPDATE sys_params SET param_value='"+url.group(1)+"' WHERE param_code='server.websocket';")
+print("COMMIT;")
 PYSQL
   invalidate_manager_params
   # Never restart or reconfigure production server/gateway/tunnel.
