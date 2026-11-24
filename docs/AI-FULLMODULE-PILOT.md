@@ -23,16 +23,24 @@ Code review or CI green alone does not complete a phase. Live acceptance must be
 - Official manager API issues `activation.code` and uses Redis plus the stock manager-web UI to bind devices. The `server.secret` in the isolated manager database is used for the pilot's server config.
 - Upstream `docker-compose_all.yml` is *not* directly deployable to a shared production VPS: it contains public port publishes, mutable `latest` tags and a default database password. A09 resolves release v0.9.8 image tags to digests, creates its own password, caps resources, and binds TCP ports exclusively to 127.0.0.1.
 
+## Deployment host decision (2026-11-25)
+
+**Observed:** Existing S3-Voice VPS returned `A09_BLOCKED: less than ~4GB physical RAM`. This is a correctly enforced safety stop **before image downloads, directory creation or container changes**. Do not bypass by forcing limits/swap. P0 actual-vps resource gate is **BLOCKED**, not passed.
+
+**Plan revision:** Keep the original A03/A04/A07 4B VPS unchanged. Prefer an **independent x86_64 VPS with >=4 GB physical RAM, >=2.3 GiB available RAM, >=10 GiB free disk and Docker Engine >=28**. If no such host exists, pause A09 instead of buying a server for activation alone; an open-source/updated iOS client is a less invasive alternative. P0/P1/P2 acceptance weights and PR budget remain unchanged; only the host placement is revised.
+
+On an independent host use `preflight-remote` and `install-remote`. Remote mode **rejects any pre-existing `s3-voice-ai-{server,gateway,tunnel}` containers** and otherwise uses the same resource, loopback port, image and credentials guards. It never reaches the original VPS or attempts to migrate it. Production-host `preflight`/`install` still require all three existing containers to be running and are intentionally blocked on the undersized VPS.
+
 ## Local-only pilot
 
 ```bash
-sudo bash tools/ai/a09-fullmodule.sh preflight
-sudo bash tools/ai/a09-fullmodule.sh install
+sudo bash tools/ai/a09-fullmodule.sh preflight-remote   # on independent VPS
+sudo bash tools/ai/a09-fullmodule.sh install-remote     # on independent VPS
 sudo bash tools/ai/a09-fullmodule.sh status
 sudo bash tools/ai/a09-fullmodule.sh stop
 ```
 
-The installer preflight requires x86_64, Docker Engine 28+, an unchanged running A03/A04/Tunnel baseline, >~4GB total RAM, >=~2.3GiB MemAvailable, >=10GiB free disk, and free 19000/19002/19003 loopback TCP ports. It stops rather than resizing or disabling old services. Production server, gateway, tunnel, GPT/Vosk/EdgeTTS configuration and firmware remain intact.
+The installer preflight requires x86_64, Docker Engine 28+, either the unchanged existing A03/A04/Tunnel baseline (cohost mode) or absence of all S3-Voice production containers (remote mode), >~4GB total RAM, >=~2.3GiB MemAvailable, >=10GiB free disk, and free 19000/19002/19003 loopback TCP ports. It stops rather than resizing or disabling old services. Production server, gateway, tunnel, GPT/Vosk/EdgeTTS configuration and firmware remain intact. This pilot is strictly local-only until P2; do not copy the existing 4B's private OTA path or AI credentials.
 
 Pilot UI is loopback `127.0.0.1:19002`; pilot WebSocket `127.0.0.1:19000`; pilot health `127.0.0.1:19003`. Use an SSH tunnel from a Mac for the stock manager-web admin registration. It is deliberately **not** exposed through Cloudflare during P1.
 
