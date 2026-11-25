@@ -74,7 +74,7 @@ test "$ready" = 1 || { echo A09_P2_CI_GATE_NOT_READY >&2; exit 1; }
 # The CI client executes from adapter's isolated Docker namespace and reads
 # its own WSS URL from env, so no secret or active 4B identifier is logged.
 docker exec -i s3-voice-a09-lite-adapter python -I - <<'PY'
-import base64, http.client, json, os, subprocess, sys, urllib.error, urllib.request
+import base64, http.client as http_client, json, os, subprocess, sys, urllib.error, urllib.request
 DEVICE = '02:ab:cd:ef:45:67'
 CLIENT = '9dabdafe-3d8a-4e40-97d5-2e05c310c912'
 WSS = os.environ['A09_LITE_WSS_URL']
@@ -98,7 +98,7 @@ def ws(device=DEVICE, client=CLIENT, token='', route=None):
                'Authorization':'Bearer '+token, 'Upgrade':'websocket',
                'Connection':'Upgrade', 'Sec-WebSocket-Key':base64.b64encode(os.urandom(16)).decode(),
                'Sec-WebSocket-Version':'13'}
-    conn=http.client.HTTPConnection('gateway',8080,timeout=5)
+    conn=http_client.HTTPConnection('gateway',8080,timeout=5)
     try:
         conn.request('GET','/xiaozhi/v1/'+(route or SECRET),headers=headers)
         resp=conn.getresponse()
