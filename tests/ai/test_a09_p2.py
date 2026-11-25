@@ -116,7 +116,7 @@ class P2Isolation(unittest.TestCase):
 
     def test_ci_uses_real_websocket_upgrade_not_urllib_connection_close(self):
         docker_test = (ROOT / "tests/ai/a09_p2_docker.sh").read_text()
-        self.assertIn("http.client.HTTPConnection", docker_test)
+        self.assertIn("http_client.HTTPConnection", docker_test)
         self.assertIn("'Connection':'Upgrade'", docker_test)
         self.assertIn("approved_ws==101", docker_test)
         self.assertIn('ready=0', docker_test)
