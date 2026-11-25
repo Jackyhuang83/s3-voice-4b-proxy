@@ -7,9 +7,11 @@ on:
       - 'tools/ai/a09-same-host.sh'
       - 'tools/ai/a09_same_host.py'
       - 'tools/ai/a09_diagnose.py'
+      - 'tools/ai/a09_edge_audit.py'
       - 'deploy/ai/a09-lite/**'
       - 'tests/ai/a09_p2_*'
       - 'tests/ai/test_a09_p2.py'
+      - 'tests/ai/test_a09_edge_audit.py'
       - 'tests/ai/test_a09_lite.py'
       - 'docs/ai/A09-P2-ISOLATED-IOS.md'
       - '.github/workflows/ai-a09-p2.yml'
@@ -29,11 +31,12 @@ jobs:
           bash -n tools/ai/a09-same-host.sh
           bash -n tests/ai/a09_p2_docker.sh
           bash -n tests/ai/a09_p2_install_docker.sh
-          python -m py_compile tools/ai/a09_diagnose.py tools/ai/a09_same_host.py tools/ai/a09_lite.py tests/ai/a09_p2_fake_voice.py tests/ai/test_a09_p2.py
+          python -m py_compile tools/ai/a09_edge_audit.py tools/ai/a09_diagnose.py tools/ai/a09_same_host.py tools/ai/a09_lite.py tests/ai/a09_p2_fake_voice.py tests/ai/test_a09_p2.py
       - name: P1 regression and P2 isolation security contracts
         run: |
           python -m unittest discover -s tests/ai -p 'test_a09_lite.py' -v
           python -m unittest discover -s tests/ai -p 'test_a09_p2.py' -v
+          python -m unittest discover -s tests/ai -p 'test_a09_edge_audit.py' -v
   caddy-integration:
     needs: [static]
     runs-on: ubuntu-latest
