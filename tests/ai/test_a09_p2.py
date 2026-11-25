@@ -215,6 +215,8 @@ docker() {
         self.assertIn('def session():', script)
         self.assertIn('finally:\n        rollback()', script)
         self.assertIn('open("/dev/tty"', script)
+        self.assertIn("signal.alarm(180)", script)
+        self.assertIn("signal.alarm(0)", script)
         self.assertIn("missing_client_id", ADAPTER)
         self.assertIn("RequestDiagnostics", ADAPTER)
         self.assertNotIn("self.log_message(", ADAPTER)
