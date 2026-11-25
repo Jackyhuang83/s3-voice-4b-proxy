@@ -112,7 +112,7 @@ except urllib.error.HTTPError as e:
   done
   return 1
 }
-install() {
+install_pilot() {
   preflight
   local original_ids python_image caddy_image secret
   original_ids="$(baseline_ids)"
@@ -124,7 +124,8 @@ install() {
   resources_pre
   test "$(baseline_ids)" = "$original_ids" || die 'original container changed during image resolution'
   test ! -e "$ROOT" && test ! -L "$ROOT" || die 'A09-Lite directory unexpectedly appeared'
-  install -d -m 0700 "$ROOT" "$ROOT/data"
+  # Use the external coreutils executable explicitly; do not recurse into the installer.
+  command install -d -m 0700 "$ROOT" "$ROOT/data"
   chown 10001:10001 "$ROOT/data"
   printf '%s\n' "$(swap_used)" > "$ROOT/.baseline-swap"
   cp "$SOURCE/deploy/ai/a09-lite/docker-compose.yml" "$COMPOSE"
@@ -194,7 +195,7 @@ stop() {
 }
 case "${1:-}" in
   preflight) preflight ;;
-  install) install ;;
+  install) install_pilot ;;
   status) status ;;
   approve) approve ;;
   revoke) test "$#" -eq 2 || die 'revoke <MAC>'; revoke "$2" ;;
