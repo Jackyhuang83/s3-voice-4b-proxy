@@ -88,3 +88,47 @@ CI gates are **not** real-phone proof. The closed-source App Store "Hi 小智" c
 
 **Safety:** Same-host extension deliberately touches the *existing A04 Caddy configuration*, not its container image or 4B firmware. Requires a protective exact-source check, read-only template parse, a backup and immediate automatic rollback before any active config alteration. Do not edit existing Cloudflare account rules or connector; do not enable new host listener. Pilot must STOP if it cannot guarantee graceful reload and old 4B route preservation.
 
+
+
+## P2-D One-shot private iPhone request diagnostics (existing PR #30)
+
+The real owner read-only SQLite summary was active=0 expired=0 approved=0.
+That proves no current pending code, not the absence of a phone request. The
+closed-source Hi 小智 exact HTTP handshake has NOT been verified. An
+independent Flutter client omits Client-Id; do NOT assume the same of Hi 小智.
+The official A03 Python OTA requires both identity headers, and no
+automatic identity synthesis, auto-approval or authentication bypass is allowed.
+
+Source: tools/ai/a09_diagnose.py. Once the reviewed latest PR head passes all
+three CI jobs, the owner runs one interactive command on the already-installed
+and same-host-activated VPS:
+
+    sudo python3 tools/ai/a09_diagnose.py session
+
+The script backs up both exact byte sequences under private mode 0600, checks
+the installed A09 adapter matches the known previously accepted source, and
+temporarily instruments only the A09 adapter with aggregate volatile counters.
+It restarts only the NEW A09 adapter and hot-reloads original A04 Caddy without
+restarting the 4B voice server, old gateway container or existing Cloudflare
+connector. The original 4B matchers, secret, OTA/WS, and default deny remain
+untouched. Only the separate 256-bit-secret A09 OTA route is temporarily
+forwarded directly to the A09 adapter for classification. Invalid identities
+are still HTTP 400 and never receive binding codes. A GET OTA request is
+classified and returns HTTP 405. The public /internal/diagnostics remains 403.
+
+The user opens Hi 小智 once, attempts a connection, returns to SSH and presses
+Return. The same running command prints A09_DIAG_COUNTS and A09_DIAG_VERDICT,
+then restores exact original A04 Caddy and A09 adapter bytes automatically,
+with A09_DIAG_ROLLBACK_PASS. No private URL, Token, MAC, Client-Id, code,
+raw body or identifying header is displayed or persisted by the diagnostics.
+
+Possible results: NO_A09_OTA_REACHED (wrong app config/path/provider or
+unobserved traffic), OTA_WRONG_METHOD (GET rather than POST),
+MISSING_REQUIRED_IDENTITY, INVALID_IDENTITY_FORMAT, A03_UPSTREAM_UNAVAILABLE,
+OTA_REQUEST_OR_RESPONSE_INCOMPATIBLE, A09_OTA_CODE_ISSUED.
+An issued code still does not establish a real device speech session.
+
+If mobile SSH disconnects mid-session and leaves private backup files, DO NOT
+rerun session or overwrite the files. After reconnecting, execute exactly
+sudo python3 tools/ai/a09_diagnose.py rollback. Never delete backups manually.
+P2 remains unaccepted until actual iPhone and original 4B full-audio tests pass.
