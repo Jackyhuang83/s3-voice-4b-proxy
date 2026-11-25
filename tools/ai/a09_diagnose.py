@@ -319,13 +319,15 @@ def session():
     """One bounded terminal session: arm, one phone attempt, report, restore."""
     ensure(os.isatty(0), "interactive SSH terminal required")
     arm()
-    previous = signal.getsignal(signal.SIGALRM)
+    caught = (signal.SIGALRM, signal.SIGHUP, signal.SIGTERM)
+    previous = {sig: signal.getsignal(sig) for sig in caught}
 
     def deadline(*_):
-        raise Blocked("diagnostic window ended; automatic rollback")
+        raise Blocked("diagnostic window ended or SSH disconnected; automatic rollback")
 
-    signal.signal(signal.SIGALRM, deadline)
-    signal.alarm(180)  # Bound the temporary A04 reload to three minutes.
+    for sig in caught:
+        signal.signal(sig, deadline)
+    signal.alarm(180)  # Bound temporary A04 reload to three minutes.
     try:
         announce("ACTION", "open Hi Xiaozhi and try ONE connection, then return to SSH and press Return")
         with open("/dev/tty", "r", encoding="utf-8") as terminal:
@@ -333,7 +335,8 @@ def session():
         report()
     finally:
         signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
         rollback()
 
 
