@@ -115,6 +115,70 @@ class P2Isolation(unittest.TestCase):
                 self.assertEqual(module.main(["--db", str(db), "approve", "-"]), 0)
             self.assertTrue(store.approved("02:23:45:67:89:ab", "uuid-4"))
 
+    def test_mobile_ssh_approve_uses_controlling_tty(self):
+        # The iPhone SSH user may paste a whole && chain; reading shell stdin
+        # can consume a queued newline instead of the six-digit user entry.
+        # Execute the genuine Bash approve body in a PTY with fake Docker.
+        import pty
+        import select
+        import signal
+        import time
+
+        self.assertIn("read -r -s code </dev/tty", DEPLOY)
+        self.assertNotIn("read -r -s -p", DEPLOY)
+        body = DEPLOY.split("approve() {", 1)[1].split("\n}", 1)[0]
+        shell = r"""
+set -Eeuo pipefail
+ENVFILE=/etc/hosts
+require_root() { :; }
+die() { echo "MOCK_BLOCKED" >&2; exit 1; }
+docker() {
+  if [[ "$1" == "inspect" ]]; then
+    printf 'true\n'
+  elif [[ "$1" == "exec" ]]; then
+    local given
+    IFS= read -r given
+    if [[ "$given" == "123456" ]]; then
+      printf 'MOCK_APPROVAL_PASS\n'
+    else
+      printf 'MOCK_WRONG_INPUT\n'
+      return 1
+    fi
+  else
+    return 2
+  fi
+}
+""" + "approve() {\n" + body + "\n}\napprove\n"
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execlp("bash", "bash", "-c", shell)
+        output = b""
+        status = None
+        try:
+            time.sleep(0.1)
+            os.write(fd, b"123456\n")
+            limit = time.monotonic() + 6
+            while time.monotonic() < limit:
+                readable, _, _ = select.select([fd], [], [], 0.1)
+                if readable:
+                    try:
+                        output += os.read(fd, 4096)
+                    except OSError:
+                        pass
+                done, waited = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    status = waited
+                    break
+            self.assertIsNotNone(status, output.decode("utf-8", "replace"))
+            self.assertTrue(os.WIFEXITED(status))
+            self.assertEqual(os.WEXITSTATUS(status), 0, output.decode("utf-8", "replace"))
+            self.assertIn(b"MOCK_APPROVAL_PASS", output)
+        finally:
+            if status is None:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
     def test_ci_uses_real_websocket_upgrade_not_urllib_connection_close(self):
         docker_test = (ROOT / "tests/ai/a09_p2_docker.sh").read_text()
         self.assertIn("http_client.HTTPConnection", docker_test)
