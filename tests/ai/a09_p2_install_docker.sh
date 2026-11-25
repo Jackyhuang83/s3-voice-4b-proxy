@@ -5,11 +5,11 @@
 set -Eeuo pipefail
 set +x
 export LC_ALL=C
-if [[ "\${GITHUB_ACTIONS:-}" != "true" || "\${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]]; then
+if [[ "${GITHUB_ACTIONS:-}" != "true" || "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]]; then
   printf 'A09_P2_INSTALL_CI_BLOCKED: GitHub-hosted runner only\n' >&2
   exit 2
 fi
-ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STAGE=/opt/s3-voice-a09-lite
 [[ ! -e "$STAGE" && ! -L "$STAGE" ]] || { echo "A09_P2_INSTALL_CI_BLOCKED: stage already exists"; exit 2; }
 TMP="$(mktemp -d)"
