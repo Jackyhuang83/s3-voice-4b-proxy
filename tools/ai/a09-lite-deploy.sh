@@ -85,7 +85,10 @@ stop_new_on_error() {
 }
 # Checks a real Caddy default deny and activation/WS pre-bind gate over Docker DNS.
 local_probe() {
-  docker exec s3-voice-a09-lite-adapter python -I -c '
+  # Compose reports Started before Caddy's socket is ready; do not false-trip.
+  local attempt
+  for attempt in $(seq 1 40); do
+    if docker exec s3-voice-a09-lite-adapter python -I -c '
 import urllib.request,urllib.error
 url="http://gateway:8080/"
 try:
@@ -93,7 +96,13 @@ try:
     raise SystemExit("A09_P2_GATE_FAIL: default route exposed")
 except urllib.error.HTTPError as e:
     assert e.code==403,e.code
-print("A09_P2_GATE_PASS: separate gateway default deny 403")'
+' >/dev/null 2>&1; then
+      msg GATE_PASS 'separate Caddy default deny 403'
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }
 install() {
   preflight
