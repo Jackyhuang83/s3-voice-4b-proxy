@@ -1,0 +1,51 @@
+:8080 {
+  # No logs of activation/OTA paths containing the private capability.
+  log {
+    output discard
+  }
+
+  @ios_ota {
+    method POST
+    path /xiaozhi/ota/__IOS_SECRET__
+    header Device-Id *
+    header Client-Id *
+  }
+  handle @ios_ota {
+    rewrite * /xiaozhi/ota/
+    reverse_proxy adapter:19009
+  }
+
+  # The standard activation poll is read-only (202 / 200); no public approve API.
+  # Some iOS builds derive this path rather than using the custom OTA suffix.
+  @ios_activation {
+    method POST
+    path /xiaozhi/ota/activate
+    header Device-Id *
+    header Client-Id *
+  }
+  handle @ios_activation {
+    reverse_proxy adapter:19009
+  }
+
+  @ios_ws {
+    method GET
+    path /xiaozhi/v1/__IOS_SECRET__
+    header Device-Id *
+    header Client-Id *
+    header Connection *Upgrade*
+    header Upgrade websocket
+  }
+  handle @ios_ws {
+    # Exactly the approved Device-Id/Client-Id may reach the existing HMAC WS.
+    # The original Authorization bearer is passed to A03 unmodified.
+    forward_auth adapter:19009 {
+      uri /internal/authorize-ws
+    }
+    rewrite * /xiaozhi/v1/
+    reverse_proxy s3-voice-ai-server:8000
+  }
+
+  handle {
+    respond "Forbidden" 403
+  }
+}
