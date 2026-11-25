@@ -181,6 +181,17 @@ docker() {
                 os.waitpid(pid, 0)
             os.close(fd)
 
+    def test_readonly_pending_diagnosis_without_code_or_identity_leak(self):
+        check = DEPLOY.split("pending() {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("mode=ro", check)
+        self.assertIn("A09_P2_PENDING_STATUS: active=%d expired=%d approved=%d", check)
+        self.assertIn("bound_at IS NULL AND expires_at > ?", check)
+        self.assertNotIn("SELECT *", check)
+        self.assertNotIn("SELECT code", check)
+        self.assertNotIn("SELECT device_id", check)
+        self.assertIn("  pending) pending ;;", DEPLOY)
+        self.assertIn("  pending\n  msg STATUS", DEPLOY)
+
     def test_ci_uses_real_websocket_upgrade_not_urllib_connection_close(self):
         docker_test = (ROOT / "tests/ai/a09_p2_docker.sh").read_text()
         self.assertIn("http_client.HTTPConnection", docker_test)
