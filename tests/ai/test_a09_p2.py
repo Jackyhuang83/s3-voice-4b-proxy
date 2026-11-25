@@ -49,11 +49,12 @@ class P2Isolation(unittest.TestCase):
         self.assertIn("restart: 'no'", COMPOSE)
 
     def test_public_caddy_strict_exclusions_and_root_403(self):
-        self.assertEqual(CADDY.count("__IOS_SECRET__"), 2)
+        self.assertEqual(CADDY.count("__IOS_SECRET__"), 3)
         self.assertIn("output discard", CADDY)
         self.assertIn("path /xiaozhi/ota/__IOS_SECRET__", CADDY)
         self.assertIn("path /xiaozhi/v1/__IOS_SECRET__", CADDY)
         self.assertIn("path /xiaozhi/ota/activate", CADDY)
+        self.assertIn("path /xiaozhi/ota/__IOS_SECRET__/activate", CADDY)
         self.assertIn("method POST", CADDY)
         self.assertIn("method GET", CADDY)
         self.assertIn('respond "Forbidden" 403', CADDY)
@@ -185,6 +186,8 @@ chown() {
         self.assertIn("/xiaozhi/ota/" + "b" * 64, extended)
         self.assertIn("/xiaozhi/v1/" + "b" * 64, extended)
         self.assertIn("reverse_proxy s3-voice-a09-lite-gateway:8080", extended)
+        self.assertIn("path /xiaozhi/ota/" + "b" * 64 + "/activate", extended)
+        self.assertIn("rewrite * /xiaozhi/ota/activate", extended)
         self.assertIn('    respond "Forbidden" 403', extended)
         self.assertEqual(extended.count("A09-P2-SAME-HOST-BEGIN"), 1)
         self.assertEqual(extended.count("A09-P2-SAME-HOST-END"), 1)
