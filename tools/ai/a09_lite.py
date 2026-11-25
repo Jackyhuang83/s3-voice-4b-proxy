@@ -25,14 +25,21 @@ MAX_BODY = 16384
 TTL_SECONDS = 600
 DEFAULT_DB = "/var/lib/s3-voice-a09-lite/activation.sqlite3"
 DEFAULT_UPSTREAM = "http://127.0.0.1:18003/xiaozhi/ota/"
+DOCKER_UPSTREAM = "http://s3-voice-ai-server:8003/xiaozhi/ota/"
 DEFAULT_WSS = "wss://a09-lite-not-ready.invalid/xiaozhi/v1/"
 
 
+def docker_internal():
+    """Enable the Docker-only listener only inside a container, never on the host."""
+    return os.environ.get("A09_LITE_DOCKER_INTERNAL") == "1" and Path("/.dockerenv").is_file()
+
+
 def validate_origin(origin):
-    parsed = parse.urlsplit(origin)
-    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or parsed.port != 18003 or parsed.path != "/xiaozhi/ota/" or parsed.query or parsed.fragment or parsed.username:
-        raise ValueError("upstream OTA must be the existing loopback 127.0.0.1:18003/xiaozhi/ota/")
-    return origin
+    if origin == DEFAULT_UPSTREAM:
+        return origin
+    if docker_internal() and origin == DOCKER_UPSTREAM:
+        return origin
+    raise ValueError("OTA origin must be the known A03 host-loopback or Docker service endpoint")
 
 
 def validate_wss(url):
@@ -229,14 +236,20 @@ def main(argv=None):
             store.initialize()
             print("A09_LITE_INIT_PASS")
         elif args.command == "approve":
-            device_id = store.approve(args.code)
+            code = sys.stdin.readline().strip() if args.code == "-" else args.code
+            device_id = store.approve(code)
             print("A09_LITE_APPROVED: device ending", device_id[-5:])
         elif args.command == "revoke":
             print("A09_LITE_REVOKED: records", store.revoke(args.device_id))
         elif args.command == "serve":
             upstream = validate_origin(os.environ.get("A09_LITE_UPSTREAM", DEFAULT_UPSTREAM))
             wss_url = validate_wss(os.environ.get("A09_LITE_WSS_URL", DEFAULT_WSS))
-            server = ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("A09_LITE_PORT", "19009"))),
+            if os.environ.get("A09_LITE_DOCKER_INTERNAL") == "1" and not docker_internal():
+                raise ValueError("Docker-only mode requires a real container")
+            if docker_internal() and (upstream != DOCKER_UPSTREAM or wss_url == DEFAULT_WSS):
+                raise ValueError("Docker mode requires fixed A03 service and separate iOS WSS")
+            bind_ip = "0.0.0.0" if docker_internal() else "127.0.0.1"
+            server = ThreadingHTTPServer((bind_ip, int(os.environ.get("A09_LITE_PORT", "19009"))),
                                          create_handler(store, upstream, wss_url))
             print("A09_LITE_LISTEN: local-only", flush=True)
             server.serve_forever()
