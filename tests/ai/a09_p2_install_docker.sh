@@ -108,8 +108,20 @@ PY
 # Correct route forwards the *existing* A04 host to A09 without changing 4B
 # identity and exact private routes. The probe never logs the private new URL.
 sudo python3 - "$STAGE/.env" <<'PY'
-import json, sys, urllib.request, urllib.error
+import base64, http.client, json, os, subprocess, sys, urllib.request, urllib.error
 env=dict(line.split('=',1) for line in open(sys.argv[1]).read().splitlines())
+def ws(path, device, client, token):
+    headers={'Device-Id':device,'Client-Id':client,'Authorization':'Bearer '+token,
+             'Upgrade':'websocket','Connection':'Upgrade',
+             'Sec-WebSocket-Key':base64.b64encode(os.urandom(16)).decode(),
+             'Sec-WebSocket-Version':'13'}
+    conn=http.client.HTTPConnection('127.0.0.1',18080,timeout=7)
+    try:
+        conn.request('GET',path,headers=headers)
+        response=conn.getresponse()
+        return response.status
+    finally:
+        conn.close()
 url='http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET']
 headers={'Device-Id':'02:ab:cd:ef:45:67','Client-Id':'a09-same-host-test','Content-Type':'application/json'}
 request=urllib.request.Request(url,data=b'{"application":{"version":"2.6.0"}}',headers=headers)
@@ -117,13 +129,30 @@ with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,t
     body=json.load(resp)
 assert body['websocket']['url'].startswith('wss://voice.cncloudx.com/xiaozhi/v1/')
 assert len(body['activation']['code'])==6
+secret=env['IOS_SECRET']
+device='02:ab:cd:ef:45:67'
+client='a09-same-host-test'
+token=body['websocket']['token']
+assert ws('/xiaozhi/v1/'+secret,device,client,token)==403
+p=subprocess.run(['docker','exec','-i','-u','10001','s3-voice-a09-lite-adapter',
+                  'python','-I','/app/a09_lite.py','--db',
+                  '/var/lib/s3-voice-a09-lite/activation.sqlite3',
+                  'approve','-'],
+                 input=body['activation']['code']+'\n',capture_output=True,text=True,timeout=10)
+assert p.returncode==0,p.stderr
+assert ws('/xiaozhi/v1/'+secret,device,client,token)==101
+assert ws('/xiaozhi/v1/'+secret,device,client,'bad.fake')==403
+assert ws('/xiaozhi/v1/'+secret,device,'other-device',token)==403
 # Legacy original OTA identity must still reach fake A03 through old A04.
 original='http://127.0.0.1:18080/xiaozhi/ota/'+'a'*64
 headers={'Device-Id':'02:01:02:03:04:05','Client-Id':'same-host-original-client-id','Content-Type':'application/json'}
 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
     urllib.request.Request(original,data=b'{}',headers=headers),timeout=8) as resp:
     assert resp.status==200
-print('A09_P2_SAME_HOST_ROUTE_CI_PASS: old 4B OTA and new iPhone OTA/WS URL')
+    legacy=json.load(resp)
+assert ws('/xiaozhi/v1/'+'a'*64,headers['Device-Id'],
+          headers['Client-Id'],legacy['websocket']['token'])==101
+print('A09_P2_SAME_HOST_ROUTE_CI_PASS: old 4B OTA/WS101 and new iPhone OTA, owner approve, WS403/101')
 PY
 sudo python3 "$ROOT/tools/ai/a09_same_host.py" rollback > "$TMP/rollback.log" 2>&1
 grep -q '^A09_P2_SAME_HOST_ROLLBACK_PASS:' "$TMP/rollback.log"
