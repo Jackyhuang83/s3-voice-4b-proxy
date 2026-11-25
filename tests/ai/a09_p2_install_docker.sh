@@ -21,7 +21,7 @@ cleanup() {
   fi
   docker rm -f s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel >/dev/null 2>&1
   docker network rm s3-voice-ai_default s3-voice-ai-edge_front >/dev/null 2>&1
-  sudo rm -rf -- "$STAGE"
+  sudo rm -rf -- "$STAGE" /opt/s3-voice-ai-edge
   rm -rf -- "$TMP"
 }
 trap cleanup EXIT
@@ -34,12 +34,28 @@ docker run -d --name s3-voice-ai-server \
   --network s3-voice-ai_default -p 127.0.0.1:18003:8003 \
   -v "$ROOT/tests/ai/a09_p2_fake_voice.py:/tmp/fake.py:ro" \
   python:3.13.9-slim-bookworm python -I /tmp/fake.py >/dev/null
-# Fake preexisting A04 default-deny gateway, using the real pinned Caddy image.
-printf ':8080 {\n  respond "Forbidden" 403\n}\n' > "$TMP/Caddyfile"
-chmod 0644 "$TMP/Caddyfile"
+# Real production A04 Caddy template, with a synthetic original 4B identity.
+# This is crucial: the same-host test must preserve an actual legacy OTA/WS
+# matcher rather than a fake 403-only gateway.
+sudo mkdir -p /opt/s3-voice-ai-edge
+sudo python3 - "$ROOT/deploy/ai/a04/Caddyfile.in" /opt/s3-voice-ai-edge/Caddyfile <<'PY'
+from pathlib import Path
+import sys
+text=Path(sys.argv[1]).read_text()
+for k,v in [
+    ('__PAIR_SECRET__', 'a'*64),
+    ('__DEVICE_ID__', '02:01:02:03:04:05'),
+    ('__CLIENT_ID__', 'same-host-original-client-id'),
+]:
+    assert k in text
+    text=text.replace(k,v)
+Path(sys.argv[2]).write_text(text)
+PY
+sudo chmod 0444 /opt/s3-voice-ai-edge/Caddyfile
 docker run -d --name s3-voice-ai-gateway --network s3-voice-ai-edge_front \
-  -p 127.0.0.1:18080:8080 -v "$TMP/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  -p 127.0.0.1:18080:8080 -v /opt/s3-voice-ai-edge/Caddyfile:/etc/caddy/Caddyfile:ro \
   caddy:2.11.7-alpine >/dev/null
+docker network connect s3-voice-ai_default s3-voice-ai-gateway
 # Synthetic original Tunnel: no Cloudflare token, no outbound tunnel traffic.
 docker run -d --name s3-voice-ai-tunnel --network s3-voice-ai-edge_front \
   python:3.13.9-slim-bookworm python -c 'import time; time.sleep(600)' >/dev/null
@@ -72,6 +88,48 @@ test "$before" = "$after" || { echo A09_P2_INSTALL_CI_ORIGINAL_RECREATED >&2; ex
 sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" status > "$TMP/status.log" 2>&1
 grep -q '^A09_P2_STATUS:' "$TMP/status.log"
 echo 'A09_P2_REAL_INSTALL_SIM_PASS: original Docker identities preserved; new pilot healthy; no host ports'
+before_a04="$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
+# Run the actual new one-domain code. GitHub-hosted simulator skips ONLY the
+# impossible public Cloudflare verification; local Caddy routing is exercised.
+sudo env GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted \
+  A09_SAME_HOST_SIMULATOR=1 python3 "$ROOT/tools/ai/a09_same_host.py" apply \
+  > "$TMP/same-host.log" 2>&1 || {
+  cat "$TMP/same-host.log" >&2
+  echo A09_P2_SAME_HOST_CI_FAILED >&2
+  exit 1
+}
+grep -q '^A09_P2_SAME_HOST_PILOT_PASS:' "$TMP/same-host.log"
+sudo python3 - "$STAGE/.env" <<'PY'
+from pathlib import Path
+import sys
+env=Path(sys.argv[1]).read_text()
+assert 'IOS_HOSTNAME=voice.cncloudx.com' in env
+PY
+# Correct route forwards the *existing* A04 host to A09 without changing 4B
+# identity and exact private routes. The probe never logs the private new URL.
+sudo python3 - "$STAGE/.env" <<'PY'
+import json, sys, urllib.request, urllib.error
+env=dict(line.split('=',1) for line in open(sys.argv[1]).read().splitlines())
+url='http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET']
+headers={'Device-Id':'02:ab:cd:ef:45:67','Client-Id':'a09-same-host-test','Content-Type':'application/json'}
+request=urllib.request.Request(url,data=b'{"application":{"version":"2.6.0"}}',headers=headers)
+with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,timeout=8) as resp:
+    body=json.load(resp)
+assert body['websocket']['url'].startswith('wss://voice.cncloudx.com/xiaozhi/v1/')
+assert len(body['activation']['code'])==6
+# Legacy original OTA identity must still reach fake A03 through old A04.
+original='http://127.0.0.1:18080/xiaozhi/ota/'+'a'*64
+headers={'Device-Id':'02:01:02:03:04:05','Client-Id':'same-host-original-client-id','Content-Type':'application/json'}
+with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+    urllib.request.Request(original,data=b'{}',headers=headers),timeout=8) as resp:
+    assert resp.status==200
+print('A09_P2_SAME_HOST_ROUTE_CI_PASS: old 4B OTA and new iPhone OTA/WS URL')
+PY
+sudo python3 "$ROOT/tools/ai/a09_same_host.py" rollback > "$TMP/rollback.log" 2>&1
+grep -q '^A09_P2_SAME_HOST_ROLLBACK_PASS:' "$TMP/rollback.log"
+test "$before_a04" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
+test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
+echo 'A09_P2_SAME_HOST_ROLLBACK_CI_PASS: exact A04 Caddy bytes restored, original containers unchanged'
 sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" stop > "$TMP/stop.log" 2>&1
 grep -q '^A09_P2_STOP_PASS:' "$TMP/stop.log"
 for n in s3-voice-a09-lite-adapter s3-voice-a09-lite-gateway; do
