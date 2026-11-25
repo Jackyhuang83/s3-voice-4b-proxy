@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -315,15 +316,24 @@ def report():
 
 
 def session():
-    """One terminal command: arm, one phone attempt, read result, restore."""
+    """One bounded terminal session: arm, one phone attempt, report, restore."""
     ensure(os.isatty(0), "interactive SSH terminal required")
     arm()
+    previous = signal.getsignal(signal.SIGALRM)
+
+    def deadline(*_):
+        raise Blocked("diagnostic window ended; automatic rollback")
+
+    signal.signal(signal.SIGALRM, deadline)
+    signal.alarm(180)  # Bound the temporary A04 reload to three minutes.
     try:
         announce("ACTION", "open Hi Xiaozhi and try ONE connection, then return to SSH and press Return")
         with open("/dev/tty", "r", encoding="utf-8") as terminal:
             terminal.readline()
         report()
     finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
         rollback()
 
 
