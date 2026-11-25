@@ -121,6 +121,45 @@ class P2Isolation(unittest.TestCase):
         self.assertIn("approved_ws==101", docker_test)
         self.assertIn('ready=0', docker_test)
 
+    def test_install_invocation_cannot_shadow_coreutils_or_recurse(self):
+        # Regression for the real iPhone VPS failure: install() recursively invoked
+        # itself at "install -d", endlessly repeating PREFLIGHT/IMAGE_CACHED.
+        import subprocess
+
+        self.assertNotRegex(DEPLOY, r"(?m)^install\\(\\) \\{")
+        self.assertIn("install_pilot() {", DEPLOY)
+        self.assertIn("  install) install_pilot ;;", DEPLOY)
+        self.assertIn('command install -d -m 0700 "$ROOT" "$ROOT/data"', DEPLOY)
+        body = DEPLOY.split("install_pilot() {", 1)[1].split("\\n}", 1)[0]
+        # Run the actual install_pilot shell body with harmless mocked Docker,
+        # stopping immediately after the first *real* temporary directory create.
+        shell = r"""
+set -Eeuo pipefail
+ROOT="$1"
+PYTHON_TAG="synthetic"
+preflight() { printf 'PREFLIGHT_ONCE\\n'; }
+baseline_ids() { printf 'same-original-containers'; }
+docker() { :; }
+image_digest() { printf 'python@sha256:synthetic'; }
+resources_pre() { :; }
+msg() { :; }
+chown() {
+  test -d "$ROOT/data"
+  printf 'INSTALL_DIR_CREATED\\n'
+  exit 0
+}
+""" + "install_pilot() {\\n" + body + "\\n}\\ninstall_pilot\\n"
+        with tempfile.TemporaryDirectory() as folder:
+            stage = str(pathlib.Path(folder) / "install-stage")
+            p = subprocess.run(
+                ["bash", "-c", shell, "bash", stage],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+            self.assertEqual(p.stdout.count("PREFLIGHT_ONCE"), 1)
+            self.assertEqual(p.stdout.count("INSTALL_DIR_CREATED"), 1)
+            self.assertTrue((pathlib.Path(stage) / "data").is_dir())
+
     def test_cached_digest_skips_pull_and_shows_progress_on_fallback(self):
         # Avoid a second hidden image pull after Ctrl+C on a phone SSH session.
         script = DEPLOY.split("image_digest() {", 1)[1].split("stop_new_on_error() {", 1)[0]
