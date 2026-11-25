@@ -300,8 +300,11 @@ def apply():
     private_create(OLD_ENV, env)
     switched_env = env.decode("utf-8").replace(
         "IOS_HOSTNAME=ios-voice.cncloudx.com", "IOS_HOSTNAME=" + HOST, 1).encode()
+    a04_touched = False
+    env_touched = False
     try:
         # Change only the NEW adapter's OTA response URL; original 4B is not restarted.
+        env_touched = True
         ENV.write_bytes(switched_env)
         compose("up", "-d", "--no-build", "--no-deps", "adapter")
         for _ in range(30):
@@ -312,6 +315,7 @@ def apply():
         guard(running(NEW) and run("docker", "inspect", "-f",
               "{{.State.Health.Status}}", "s3-voice-a09-lite-adapter") == "healthy",
               "A09 new adapter did not become healthy")
+        a04_touched = True  # even a short write may partially alter live inode
         same_inode_write(CADDY, candidate)
         caddy_reload()
         # A09 returns 400 for deliberately malformed JSON, while old A04
@@ -332,10 +336,12 @@ def apply():
         note("PHONE_PENDING", "Hi Xiaozhi on-device OTA/6-digit/voice not yet validated")
     except BaseException:
         try:
-            same_inode_write(CADDY, a04)
-            caddy_reload()
-            ENV.write_bytes(env)
-            compose("up", "-d", "--no-build", "--no-deps", "adapter")
+            if a04_touched:
+                same_inode_write(CADDY, a04)
+                caddy_reload()
+            if env_touched:
+                ENV.write_bytes(env)
+                compose("up", "-d", "--no-build", "--no-deps", "adapter")
             original_health()
             OLD_CADDY.unlink(missing_ok=True)
             OLD_ENV.unlink(missing_ok=True)
