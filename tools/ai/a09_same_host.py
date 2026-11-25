@@ -264,18 +264,26 @@ def apply():
         ENV.write_bytes(switched_env)
         compose("up", "-d", "--no-build", "--no-deps", "adapter")
         for _ in range(30):
-            if running(NEW):
+            if running(NEW) and run("docker", "inspect", "-f",
+                 "{{.State.Health.Status}}", "s3-voice-a09-lite-adapter") == "healthy":
                 break
             time.sleep(1)
-        guard(running(NEW), "A09 new adapter did not become healthy")
+        guard(running(NEW) and run("docker", "inspect", "-f",
+              "{{.State.Health.Status}}", "s3-voice-a09-lite-adapter") == "healthy",
+              "A09 new adapter did not become healthy")
         same_inode_write(CADDY, candidate)
         caddy_reload()
         # A09 returns 400 for deliberately malformed JSON, while old A04
         # rejects it with 403. No real device or activation record is created.
         local = "http://127.0.0.1:18080/xiaozhi/ota/" + secret
         guard(probe(local) == 400, "local same-host OTA route did not reach A09")
-        guard(probe("https://" + HOST + "/xiaozhi/ota/" + secret) == 400,
-              "Cloudflare existing hostname did not reach A09")
+        # The disposable CI has no production Cloudflare credentials or tunnel.
+        simulator = (os.environ.get("GITHUB_ACTIONS") == "true"
+                     and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+                     and os.environ.get("A09_SAME_HOST_SIMULATOR") == "1")
+        if not simulator:
+            guard(probe("https://" + HOST + "/xiaozhi/ota/" + secret) == 400,
+                  "Cloudflare existing hostname did not reach A09")
         original_health()
         resource_post(old_health)
         guard(container_ids(ORIGINAL) == old_ids, "original 4B containers changed")
@@ -289,6 +297,8 @@ def apply():
             ENV.write_bytes(env)
             compose("up", "-d", "--no-build", "--no-deps", "adapter")
             original_health()
+            OLD_CADDY.unlink(missing_ok=True)
+            OLD_ENV.unlink(missing_ok=True)
             note("ROLLED_BACK", "A04 original Caddy and A09 hostname restored")
         except BaseException:
             note("ROLLBACK_BLOCKED", "manual intervention required; do NOT restart original 4B")
