@@ -6,6 +6,7 @@ Cloudflare, A03 configs, old 4B device secrets, firmware or original containers.
 Requires already-installed, healthy A09-Lite. Fails closed with scoped rollback.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -202,6 +203,46 @@ def probe(url, device="02:23:45:67:89:ab"):
         return -1
 
 
+def valid_public_ota(secret):
+    """Exercise the existing public Tunnel and actual A03 OTA with a fake device.
+
+    Never call ASR/LLM/TTS; never emit the OTA credential or signed HMAC. Revoke
+    the short-lived local test activation row even when the probe fails.
+    """
+    device = "02:71:00:00:00:09"
+    client = "s3-a09-owner-readiness-probe"
+    body = json.dumps({"application": {"version": "2.6.0"}}).encode()
+    url = "https://" + HOST + "/xiaozhi/ota/" + secret
+    try:
+        req = urllib.request.Request(url, data=body, headers={
+            "Device-Id": device, "Client-Id": client,
+            "Content-Type": "application/json"
+        }, method="POST")
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=10) as response:
+                guard(response.status == 200, "public OTA failed")
+                answer = json.loads(response.read(65536))
+        except urllib.error.HTTPError as exc:
+            raise Stop(f"public OTA returned HTTP {exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError):
+            raise Stop("public OTA network unreachable")
+        guard(answer.get("websocket", {}).get("url")
+              == "wss://" + HOST + "/xiaozhi/v1/" + secret,
+              "public OTA did not advertise existing voice hostname")
+        guard(bool(answer.get("websocket", {}).get("token")),
+              "public OTA upstream HMAC missing")
+        code = answer.get("activation", {}).get("code", "")
+        guard(isinstance(code, str) and re.fullmatch(r"[0-9]{6}", code) is not None,
+              "public OTA did not return a six-digit code")
+    finally:
+        # The private new adapter's SQLite, NOT an original 4B account.
+        run("docker", "exec", "-u", "10001", "s3-voice-a09-lite-adapter",
+            "python", "-I", "/app/a09_lite.py", "--db",
+            "/var/lib/s3-voice-a09-lite/activation.sqlite3",
+            "revoke", device, timeout=10)
+
+
 def original_health():
     # Read-only checks; never POST against original enrolled 4B's OTA.
     def code(url):
@@ -282,8 +323,7 @@ def apply():
                      and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
                      and os.environ.get("A09_SAME_HOST_SIMULATOR") == "1")
         if not simulator:
-            guard(probe("https://" + HOST + "/xiaozhi/ota/" + secret) == 400,
-                  "Cloudflare existing hostname did not reach A09")
+            valid_public_ota(secret)
         original_health()
         resource_post(old_health)
         guard(container_ids(ORIGINAL) == old_ids, "original 4B containers changed")
