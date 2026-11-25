@@ -1,0 +1,24 @@
+name: A09-Lite six-digit OTA compatibility (stdlib, isolated)
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a09_lite.py'
+      - 'tests/ai/test_a09_lite.py'
+      - 'docs/ai/A09-LITE.md'
+      - '.github/workflows/ai-a09-lite.yml'
+  workflow_dispatch:
+jobs:
+  six-digit-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: No dependencies / syntax check
+        run: python -m py_compile tools/ai/a09_lite.py tests/ai/test_a09_lite.py
+      - name: Real HTTP OTA stub + SQLite approval lifecycle + owner-only gates
+        env:
+          PYTHONWARNINGS: error::ResourceWarning
+        run: python -m unittest discover -s tests/ai -p 'test_a09_lite.py' -v
