@@ -137,7 +137,7 @@ class ActivationStore:
 class RequestDiagnostics:
     """Volatile, aggregate-only diagnostics. Never store URI, code, ID or token."""
     CATEGORIES = (
-        "ota_seen", "ota_response_ok", "ota_code_in_response",
+        "ota_seen", "ota_get_seen", "ota_response_ok", "ota_code_in_response",
         "missing_device_id", "missing_client_id", "bad_device_id",
         "bad_client_id", "bad_body", "upstream_error",
         "bad_upstream_response", "identity_conflict",
@@ -194,6 +194,9 @@ def create_handler(store, upstream, wss_url):
         def do_GET(self):
             if self.path == "/health":
                 self.respond(200, {"status": "ready"})
+            elif self.path == "/xiaozhi/ota/":
+                diagnostics.hit("ota_get_seen")
+                self.respond(405, {"error": "OTA requires POST"})
             elif self.path == "/internal/diagnostics":
                 # Reachable only on the private adapter network; Caddy blocks it.
                 self.respond(200, diagnostics.snapshot())
