@@ -169,6 +169,53 @@ chown() {
         self.assertIn('docker pull "$img" >&2', script)
         self.assertIn("immutable Python digest unavailable", script)
 
+    def test_single_existing_hostname_exact_a04_patch(self):
+        # The previous A04 device-specific paths and 403 default deny must be
+        # byte-for-byte unchanged except for an inserted A09 section.
+        path = ROOT / "tools/ai/a09_same_host.py"
+        spec = importlib.util.spec_from_file_location("a09_same_host_test", path)
+        sh = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sh)
+        original = (ROOT / "deploy/ai/a04/Caddyfile.in").read_text()
+        original = original.replace("__PAIR_SECRET__", "a" * 64)
+        original = original.replace("__DEVICE_ID__", "02:01:02:03:04:05")
+        original = original.replace("__CLIENT_ID__", "original-client")
+        self.assertEqual(sh.original_secret(original), "a" * 64)
+        extended = sh.extend_caddy(original, "b" * 64)
+        self.assertIn("/xiaozhi/ota/" + "b" * 64, extended)
+        self.assertIn("/xiaozhi/v1/" + "b" * 64, extended)
+        self.assertIn("reverse_proxy s3-voice-a09-lite-gateway:8080", extended)
+        self.assertIn('    respond "Forbidden" 403', extended)
+        self.assertEqual(extended.count("A09-P2-SAME-HOST-BEGIN"), 1)
+        self.assertEqual(extended.count("A09-P2-SAME-HOST-END"), 1)
+        self.assertIn("/xiaozhi/ota/" + "a" * 64, extended)
+        self.assertIn("/xiaozhi/v1/" + "a" * 64, extended)
+        start = extended.index(sh.START)
+        end = extended.index(sh.END) + len(sh.END) + 1
+        self.assertEqual(extended[:start] + extended[end:], original)
+        with self.assertRaises(sh.Stop):
+            sh.extend_caddy(extended, "c" * 64)
+        with self.assertRaises(sh.Stop):
+            sh.extend_caddy(original, "a" * 64)
+        with self.assertRaises(sh.Stop):
+            sh.extend_caddy(original.replace("Forbidden", "OK"), "b" * 64)
+
+    def test_same_host_script_has_scope_safety_and_private_reveal(self):
+        script = (ROOT / "tools/ai/a09_same_host.py").read_text()
+        sh = (ROOT / "tools/ai/a09-same-host.sh").read_text()
+        self.assertIn('HOST = "voice.cncloudx.com"', script)
+        self.assertNotIn("ios-voice.cncloudx.com/", script)
+        self.assertIn("same_inode_write(CADDY, candidate)", script)
+        self.assertIn("caddy_reload()", script)
+        self.assertIn("original_health()", script)
+        self.assertIn("private_create(OLD_CADDY, a04)", script)
+        self.assertIn("private_create(OLD_ENV, env)", script)
+        self.assertIn("ROLLED_BACK", script)
+        self.assertIn("sys.stdout.isatty()", script)
+        self.assertIn('choices=["apply", "status", "rollback", "show-url"]', script)
+        self.assertNotRegex(script, r"docker.*(stop|restart|rm).*(s3-voice-ai-server|s3-voice-ai-gateway|s3-voice-ai-tunnel)")
+        self.assertIn("a09_same_host.py", sh)
+
     def test_cloudflare_owner_action_and_real_audio_not_claimed(self):
         self.assertIn("ios-voice.cncloudx.com", DEPLOY)
         self.assertIn("s3-voice-a09-lite-gateway:8080", DOCS)
