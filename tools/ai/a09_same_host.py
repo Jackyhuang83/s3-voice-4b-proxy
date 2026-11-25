@@ -133,6 +133,16 @@ def extend_caddy(existing, secret):
     reverse_proxy s3-voice-a09-lite-gateway:8080
   }}
 
+  @a09_activation_suffix {{
+    method POST
+    path /xiaozhi/ota/{secret}/activate
+    header Device-Id *
+    header Client-Id *
+  }}
+  handle @a09_activation_suffix {{
+    reverse_proxy s3-voice-a09-lite-gateway:8080
+  }}
+
   @a09_activation {{
     method POST
     path /xiaozhi/ota/activate
