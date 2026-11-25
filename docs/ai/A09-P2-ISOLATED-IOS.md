@@ -134,3 +134,68 @@ sudo python3 tools/ai/a09_diagnose.py rollback. Never delete backups manually.
 P2 remains unaccepted until actual iPhone and original 4B full-audio tests pass.
 
 The one-shot session has a hard 180-second server-side timeout; expiration or an interactive interrupt also triggers automatic diagnostic rollback. If SSH is forcibly terminated, backups remain for the explicit rollback command above.
+
+
+## P2-E Edge-level Cloudflare/Caddy read-only ingress audit
+
+Owner confirmed Hi 小智 **already saved the full private OTA URL**; stop asking
+for App screenshots or another A09 diagnostic run. The real phone one-shot
+diagnostic returned all counters zero (OTA, activation polling and WSS auth).
+This shows only that no request reached A09 adapter during that window.
+It does NOT establish whether the request reached Cloudflare, was blocked by
+WAF/Access, hit a different Tunnel route, or failed the original A04 matcher.
+
+**Historical log limitation:** the current A04 Caddy has access logging set to
+output discard, so no historical Caddy request log can be recovered. Cloudflare
+Security Events focuses on mitigated requests; Security Analytics can provide
+HTTP request analytics subject to plan, sampling and retention. Tunnel logs
+cover connector/edge/origin activity, but may not record all individual HTTP
+requests. Do NOT set cloudflared to debug: it can print private URL bearer
+secrets and sensitive headers. Avoid uploading any Caddy config or OTA URL.
+
+The VPS read-only script tools/ai/a09_edge_audit.py compares the same
+deliberately invalid POST against:
+
+1. Local http://127.0.0.1:18080/xiaozhi/ota/ plus the protected A09 secret.
+2. Public https://voice.cncloudx.com/xiaozhi/ota/ plus that same secret.
+
+The body is a valid JSON ARRAY, not an object, and is rejected by A09 with
+HTTP 400 before contacting A03 or generating any activation code. This probe
+uses synthetic device headers, does not contact the original 4B private route,
+never operates Hi 小智 or creates a SQLite row, and cannot expose the secret
+in user-visible output. It does not restart containers, write configuration,
+change Cloudflare Access/WAF, open host ports, or add DNS entries.
+It checks the known same-host matcher, A04 bind-mount, both running gateways,
+the existing Tunnel container and their Docker front network. TLS verification
+remains enabled and public redirects are not followed.
+
+After the latest-HEAD CI passes all three jobs, execute once from the
+reviewed source checkout on the VPS:
+
+    sudo python3 tools/ai/a09_edge_audit.py
+
+Output only the redacted lines A09_EDGE_CADDY_CONFIG, A09_EDGE_DOCKER,
+A09_EDGE_LOCAL_HTTP, A09_EDGE_PUBLIC_HTTP, A09_EDGE_CLOUDFLARE_HEADERS,
+A09_EDGE_VERDICT, A09_EDGE_READ_ONLY_PASS. No raw request/response body or
+headers, private URL, MAC, Client-Id or token should be shared.
+
+Interpretation:
+- PUBLIC_AND_LOCAL_A09_ROUTE_PASS: this VPS-origin synthetic request reaches
+  A09 via both local Caddy and public Cloudflare, but does NOT prove that the
+  real iPhone uses this OTA path or sends POST. Do not modify A09 auth.
+- CADDY_403_LOCAL: local A04 rejected the request; inspect the actual loaded
+  Caddy routes before attributing the problem to Cloudflare.
+- PUBLIC_DENIED_OR_CHALLENGED: local 400 but public 401/403/429; check CF
+  Security Analytics / Security Events and hostname-specific WAF/Access
+  policies without disabling them globally.
+- PUBLIC_REDIRECT_OR_ACCESS_AUTH: public 3xx; check Access or redirect rules.
+- PUBLIC_TUNNEL_OR_EDGE_ROUTE_ERROR: public error/route mismatch while local
+  400; check the existing voice.cncloudx.com published application origin.
+- PUBLIC_PROBE_UNREACHABLE_FROM_VPS: the VPS egress probe could not reach
+  the public host; not proof of an iPhone failure.
+
+This audit compares **current reachability from the VPS**, not historic
+iPhone traffic. Verifying a past individual iPhone request in Cloudflare
+requires authorized Cloudflare account analytics/log access, not available
+from the GitHub repo. Never claim this source-level check proves the
+closed-source app's routing behavior.
