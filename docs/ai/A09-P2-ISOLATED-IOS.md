@@ -132,3 +132,5 @@ If mobile SSH disconnects mid-session and leaves private backup files, DO NOT
 rerun session or overwrite the files. After reconnecting, execute exactly
 sudo python3 tools/ai/a09_diagnose.py rollback. Never delete backups manually.
 P2 remains unaccepted until actual iPhone and original 4B full-audio tests pass.
+
+The one-shot session has a hard 180-second server-side timeout; expiration or an interactive interrupt also triggers automatic diagnostic rollback. If SSH is forcibly terminated, backups remain for the explicit rollback command above.
