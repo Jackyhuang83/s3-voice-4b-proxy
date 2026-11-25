@@ -124,8 +124,9 @@ class P2Isolation(unittest.TestCase):
         import signal
         import time
 
-        self.assertIn("read -r -s code </dev/tty", DEPLOY)
-        self.assertNotIn("read -r -s -p", DEPLOY)
+        self.assertIn("read -r code </dev/tty", DEPLOY)
+        self.assertNotIn("read -r -s code", DEPLOY)
+        self.assertIn("six-digit code (visible)", DEPLOY)
         body = DEPLOY.split("approve() {", 1)[1].split("\n}", 1)[0]
         shell = r"""
 set -Eeuo pipefail
@@ -173,6 +174,7 @@ docker() {
             self.assertTrue(os.WIFEXITED(status))
             self.assertEqual(os.WEXITSTATUS(status), 0, output.decode("utf-8", "replace"))
             self.assertIn(b"MOCK_APPROVAL_PASS", output)
+            self.assertIn(b"123456", output)  # PTY echoes user's visible digits
         finally:
             if status is None:
                 os.kill(pid, signal.SIGKILL)
