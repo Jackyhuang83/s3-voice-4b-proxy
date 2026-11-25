@@ -5,9 +5,9 @@
 ## Purpose / reasons for two tiny containers
 
 - Reuse existing official Python `xiaozhi-server v0.9.8`, GPT, Vosk and EdgeTTS. No second server, no Java/MySQL/Redis or model downloads.
-- A09-Lite Python stdlib container generates six digits, stores owner-approved bindings in SQLite and proxies existing OTA signed HMAC tokens. A **second tiny, separate Caddy gateway** presents a dedicated iPhone public hostname. It uses the exact Caddy image currently already deployed for the 4B gateway (no new Caddy image pull).
-- Both new containers publish **zero host ports**. Python memory cap **128 MiB**, Caddy **96 MiB**; total cap **224 MiB**, not predicted measured RSS. Both `restart: no`. Python has an internal network path to existing Docker `s3-voice-ai-server:8003` for OTA; Caddy reaches existing `s3-voice-ai-server:8000` for WSS; original Caddy/cloudflared/container settings are unchanged.
-- The new Caddy joins existing `s3-voice-ai-edge_front`. Existing Cloudflare Tunnel will later route **only** a new published app/hostname to `http://s3-voice-a09-lite-gateway:8080`, while the original 4B `voice.cncloudx.com` route keeps the original `http://gateway:8080`. This is a dashboard/account action for the owner; the script NEVER touches Cloudflare DNS/Tunnel/Access and doesn't change or reload the existing A04 gateway. No second Tunnel connector is installed.
+- A09-Lite Python stdlib container generates six digits, stores owner-approved bindings in SQLite and proxies existing OTA signed HMAC tokens. A **second tiny, separate Caddy gateway** internally enforces the iPhone policy while the public hostname remains the existing `voice.cncloudx.com`. It uses the exact Caddy image currently already deployed for the 4B gateway (no new Caddy image pull).
+- Both new containers publish **zero host ports**. Python memory cap **128 MiB**, Caddy **96 MiB**; total cap **224 MiB**, not predicted measured RSS. Both `restart: no`. Python has an internal network path to existing Docker `s3-voice-ai-server:8003` for OTA; Caddy reaches existing `s3-voice-ai-server:8000` for WSS; the original 4B container images and Cloudflare connector are unchanged; a strictly scoped A04 Caddy config hot reload extends two exact A09 secret paths and activation polling without restarting 4B.
+- The new Caddy joins existing `s3-voice-ai-edge_front`. The preexisting `voice.cncloudx.com → http://gateway:8080` Cloudflare route and its connector stay unchanged. `tools/ai/a09-same-host.sh apply` inserts an exact iPhone path forwarder into the original A04 Caddyfile, after private backup and config validation, then hot-reloads the same Caddy process. No new Cloudflare DNS, hostname, route, connector or container image.
 
 ## Official source / security compatibility
 
@@ -23,7 +23,7 @@
 |---|---:|---|---|---|
 | P0 protocol/current-state audit | 20% | source review, no PR | existing A03–A07 | official code and prior multi-device checks confirmed |
 | P1 activation state machine | 50% | PR #29, merged | P0 | Python SQLite 11/11 + GitHub Actions; accepted, not yet deployed |
-| P2 separate iPhone gateway, real host and device | 30% | P2-1 (one PR) | P1 | new Docker Caddy/OTA gates CI; real host preflight; no 4B restart/change; measured memory/swap; owner's CF second hostname; Hi 小智 real OTA/202→200/WS101/Opus audible; original 4B regression; exact scoped stop and rollback |
+| P2 same-host iPhone adapter, real host and device | 30% | P2-1 (one PR) | P1 | new Docker Caddy/OTA gates CI; real host preflight; no 4B restart/change; measured memory/swap; existing CF hostname path routing with reversible Caddy reload; Hi 小智 real OTA/202→200/WS101/Opus audible; original 4B regression; exact scoped stop and rollback |
 
 The P2 source/CI PR **may merge after independent CI** because no host files change merely by merging. P2 stays 0% until live/private end-to-end conditions are measured and accepted.
 
@@ -47,9 +47,9 @@ sudo bash tools/ai/a09-lite-deploy.sh status
 
 `install` resolves a digest-pinned official Python slim image, reuses the existing Caddy image digest, builds private `/opt/s3-voice-a09-lite` and SQLite owned by UID 10001, generates a distinct 256-bit capability, starts only adapter/gateway and tests default deny. It does not add public host ports. If startup fails, it stops **only** two new services; private backup/data remains for diagnosis. A post-start hard guard stops the pilot if MemAvailable below ~1.05 GiB or Swap use rises by more than **64 MiB**, or original 4B/gateway/tunnel fail health/identity checks. Never bypass this gate or increase swap merely to install.
 
-**Cloudflare** owner action, once the local pilot is healthy: In the existing *S3-Voice* remotely managed Tunnel's Published Applications/Routes, create a **new hostname** `ios-voice.cncloudx.com` with service URL `http://s3-voice-a09-lite-gateway:8080`. Do not modify the existing `voice.cncloudx.com → http://gateway:8080`. Do not configure browser-based Cloudflare Access on the device hostname (the App may not support interactive Access). Do not restart the existing cloudflared. Only the 256-bit path secret is shared with the App; it remains root-only on VPS and should be entered privately (not sent in chat).
+**Same-host owner action** after the isolated pilot and current-head CI PASS: use `sudo bash tools/ai/a09-same-host.sh apply`. It validates the current A04 bind mount and 4B secret, writes private backups, changes only the new A09 adapter's advertised hostname to `voice.cncloudx.com`, and gracefully reloads the original Caddy to forward *only* A09's exact secret OTA/WS paths and 202→200 activation poll. It automatically tests local and real Cloudflare public OTA (200, six digits, HMAC, correct WSS) and restores the exact original A04 Caddy config and A09 environment on any failure. **No Cloudflare dashboard or new route is required.**
 
-**Private Hi 小智 OTA field:** `https://ios-voice.cncloudx.com/xiaozhi/ota/<your-private-64-hex-secret>`; the adapter replies with corresponding `wss://ios-voice.cncloudx.com/xiaozhi/v1/<same-secret>`. The exact secret comes from root-only `.env`; no example or command here prints real credentials. The App's ability to use a nonstandard OTA suffix and its activation polling behavior must be verified; do not claim iOS voice from synthetic CI.
+**Private Hi 小智 OTA field:** `https://voice.cncloudx.com/xiaozhi/ota/<your-private-64-hex-secret>`; the new adapter supplies `wss://voice.cncloudx.com/xiaozhi/v1/<same-secret>`. Only after a successful `apply`, the owner may run `sudo bash tools/ai/a09-same-host.sh show-url` in an interactive root SSH terminal to see the exact private OTA URL once. Never send that credential in chat or screenshots. Its custom path and the App's activation polling behavior still require one genuine iPhone validation.
 
 With the new app displaying the real six digits, owner's root-shell action:
 
@@ -61,9 +61,10 @@ Code entry is hidden and passed via stdin, not shell history or process command-
 
 ## Rollback and success criteria
 
-Remove/disable **only** the new Cloudflare `ios-voice.cncloudx.com` hostname; leave the 4B hostname alone. Then:
+No Cloudflare route is removed or edited. To undo *only* the added same-host Caddy handlers and restore the exact original Caddyfile without a container restart, then stop the new iOS pilot:
 
 ```bash
+sudo bash tools/ai/a09-same-host.sh rollback
 sudo bash tools/ai/a09-lite-deploy.sh stop
 ```
 
@@ -71,7 +72,7 @@ This only stops new A09-Lite containers and retains the private SQLite and keys 
 
 **P2 acceptance requires all:** original 4B OTA+WSS+audible voice PASS; iPhone OTA 200 with code + HMAC token, 202→200 only after owner CLI approval, iPhone WS 101 and full microphone→Vosk→GPT→EdgeTTS→speaker, no abnormal swaps or production regressions. Until then **P2 BLOCKED** (source/CI PASS is a separate level).
 
-Upstream sources: `xinnan-tech/xiaozhi-esp32-server@v0.9.8` Java `OTAController.java`, `DeviceServiceImpl.java`, Python `ota_handler.py`, `core/auth.py`; Caddy official `forward_auth`, `reverse_proxy`; official Caddy Docker image reload guidance. The P2 design deliberately avoids reloading original Caddy altogether.
+Upstream sources: `xinnan-tech/xiaozhi-esp32-server@v0.9.8` Java `OTAController.java`, `DeviceServiceImpl.java`, Python `ota_handler.py`, `core/auth.py`; Caddy official `forward_auth`, `reverse_proxy`; official Caddy Docker image reload guidance. The revised P2 uses a validated official graceful Caddy reload with a byte-for-byte backup, retains the original 4B matchers, and does not restart original containers.
 ## P2.1 same-host convergence (roadmap change, 2026-11-25)
 
 Owner requirement updated: **reuse existing `voice.cncloudx.com` and the already-running Cloudflare Tunnel, NO new hostname, DNS, published app, or cloudflared restart.** P0 (official protocol review, 20%) and P1 (stdlib 6-digit adapter, 50%) remain 100% accepted. P2 (30%) is still 0% accepted until the real iPhone call + original Waveshare 4B speech regression succeed. Changes stay within **Draft PR #30**; no extra PR fragmentation.
