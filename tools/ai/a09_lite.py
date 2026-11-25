@@ -17,6 +17,7 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib import error, parse, request
 
 MAC = re.compile(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\Z")
@@ -133,7 +134,32 @@ class ActivationStore:
             return db.execute("DELETE FROM devices WHERE device_id=?", (device_id.lower(),)).rowcount
 
 
+class RequestDiagnostics:
+    """Volatile, aggregate-only diagnostics. Never store URI, code, ID or token."""
+    CATEGORIES = (
+        "ota_seen", "ota_response_ok", "ota_code_in_response",
+        "missing_device_id", "missing_client_id", "bad_device_id",
+        "bad_client_id", "bad_body", "upstream_error",
+        "bad_upstream_response", "identity_conflict",
+        "activation_seen", "ws_auth_seen"
+    )
+
+    def __init__(self):
+        self.started = int(time.time())
+        self.counts = dict.fromkeys(self.CATEGORIES, 0)
+        self.lock = Lock()
+
+    def hit(self, category):
+        with self.lock:
+            self.counts[category] += 1
+
+    def snapshot(self):
+        with self.lock:
+            return {"since": self.started, "counts": self.counts.copy()}
+
+
 def create_handler(store, upstream, wss_url):
+    diagnostics = RequestDiagnostics()
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             # No request URI, headers, device identities, tokens or activation codes in logs.
@@ -151,14 +177,28 @@ def create_handler(store, upstream, wss_url):
         def identity(self):
             device_id = self.headers.get("Device-Id", "").strip()
             client_id = self.headers.get("Client-Id", "").strip()
-            if not MAC.fullmatch(device_id) or not client_id or len(client_id) > 128 or any(ord(c) < 33 or ord(c) > 126 for c in client_id):
+            if not device_id:
+                diagnostics.hit("missing_device_id")
+                raise ValueError("invalid device identity")
+            if not MAC.fullmatch(device_id):
+                diagnostics.hit("bad_device_id")
+                raise ValueError("invalid device identity")
+            if not client_id:
+                diagnostics.hit("missing_client_id")
+                raise ValueError("invalid device identity")
+            if len(client_id) > 128 or any(ord(c) < 33 or ord(c) > 126 for c in client_id):
+                diagnostics.hit("bad_client_id")
                 raise ValueError("invalid device identity")
             return device_id, client_id
 
         def do_GET(self):
             if self.path == "/health":
                 self.respond(200, {"status": "ready"})
+            elif self.path == "/internal/diagnostics":
+                # Reachable only on the private adapter network; Caddy blocks it.
+                self.respond(200, diagnostics.snapshot())
             elif self.path == "/internal/authorize-ws":
+                diagnostics.hit("ws_auth_seen")
                 try:
                     device_id, client_id = self.identity()
                     self.respond(200 if store.approved(device_id, client_id) else 403)
@@ -169,6 +209,7 @@ def create_handler(store, upstream, wss_url):
 
         def do_POST(self):
             if self.path == "/xiaozhi/ota/activate":
+                diagnostics.hit("activation_seen")
                 try:
                     device_id, client_id = self.identity()
                     self.respond(200 if store.approved(device_id, client_id) else 202)
@@ -178,6 +219,7 @@ def create_handler(store, upstream, wss_url):
             if self.path != "/xiaozhi/ota/":
                 self.respond(404)
                 return
+            diagnostics.hit("ota_seen")
             try:
                 device_id, client_id = self.identity()
                 size = int(self.headers.get("Content-Length", "-1"))
@@ -201,6 +243,7 @@ def create_handler(store, upstream, wss_url):
                 code = store.issue(device_id.lower(), client_id)
                 result["websocket"]["url"] = wss_url
                 if code is not None:
+                    diagnostics.hit("ota_code_in_response")
                     result["activation"] = {
                         "code": code,
                         "message": "Enter this code in your private S3-Voice owner console: " + code,
@@ -210,12 +253,16 @@ def create_handler(store, upstream, wss_url):
                     result.pop("activation", None)
                 # No firmware update from the iOS compatibility endpoint.
                 result["firmware"] = {"version": (result.get("firmware") or {}).get("version", "0.0.0"), "url": ""}
+                diagnostics.hit("ota_response_ok")
                 self.respond(200, result)
             except (ValueError, KeyError, json.JSONDecodeError):
+                diagnostics.hit("bad_body")
                 self.respond(400, {"error": "invalid OTA request"})
             except PermissionError:
+                diagnostics.hit("identity_conflict")
                 self.respond(403, {"error": "identity conflict"})
             except (error.URLError, TimeoutError, OSError, sqlite3.Error):
+                diagnostics.hit("upstream_error")
                 self.respond(503, {"error": "activation temporarily unavailable"})
 
     return Handler
