@@ -111,6 +111,10 @@ class ActivationContract(unittest.TestCase):
         self.assertNotIn(C1, json.dumps(after))
         self.assertNotIn("device_id", after)
         self.assertEqual(FakeUpstream.requests, [])
+        self.assertEqual(self.call(path="/xiaozhi/ota/", method="GET")[0], 405)
+        with self.opener.open(url, timeout=4) as response:
+            get_stats = json.load(response)
+        self.assertEqual(get_stats["counts"]["ota_get_seen"], 1)
 
     def test_diagnostics_upstream_errors_do_not_expose_private_fields(self):
         self.upstream_server.shutdown()
