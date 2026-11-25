@@ -140,6 +140,9 @@ def extend_caddy(existing, secret):
     header Client-Id *
   }}
   handle @a09_activation_suffix {{
+    # Existing A09-Lite pilot gateway understands this fixed activate path;
+    # rewrite here so a separately installed old pilot needs no live upgrade.
+    rewrite * /xiaozhi/ota/activate
     reverse_proxy s3-voice-a09-lite-gateway:8080
   }}
 
