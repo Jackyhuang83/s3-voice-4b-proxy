@@ -87,6 +87,7 @@ after="$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do 
 test "$before" = "$after" || { echo A09_P2_INSTALL_CI_ORIGINAL_RECREATED >&2; exit 1; }
 sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" status > "$TMP/status.log" 2>&1
 grep -q '^A09_P2_STATUS:' "$TMP/status.log"
+grep -q '^A09_P2_PENDING_STATUS: active=0 expired=0 approved=0' "$TMP/status.log"
 echo 'A09_P2_REAL_INSTALL_SIM_PASS: original Docker identities preserved; new pilot healthy; no host ports'
 before_a04="$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
 # Run the actual new one-domain code. GitHub-hosted simulator skips ONLY the
@@ -129,6 +130,9 @@ with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,t
     body=json.load(resp)
 assert body['websocket']['url'].startswith('wss://voice.cncloudx.com/xiaozhi/v1/')
 assert len(body['activation']['code'])==6
+# Verify a pending code exists on THIS adapter without disclosing its value.
+summary=subprocess.check_output(['bash',os.path.join(os.environ['GITHUB_WORKSPACE'],'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
+assert 'active=1' in summary,(summary,)
 secret_ota='http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET']+'/activate'
 def activation_code():
     req=urllib.request.Request(secret_ota,data=b'{}',headers=headers,method='POST')
@@ -150,6 +154,8 @@ p=subprocess.run(['docker','exec','-i','-u','10001','s3-voice-a09-lite-adapter',
                   'approve','-'],
                  input=body['activation']['code']+'\n',capture_output=True,text=True,timeout=10)
 assert p.returncode==0,p.stderr
+summary=subprocess.check_output(['bash',os.path.join(os.environ['GITHUB_WORKSPACE'],'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
+assert 'active=0' in summary and 'approved=1' in summary,(summary,)
 assert activation_code()==200
 assert ws('/xiaozhi/v1/'+secret,device,client,token)==101
 assert ws('/xiaozhi/v1/'+secret,device,client,'bad.fake')==403
