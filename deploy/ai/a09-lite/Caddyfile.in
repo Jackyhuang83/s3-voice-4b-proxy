@@ -15,8 +15,20 @@
     reverse_proxy adapter:19009
   }
 
-  # The standard activation poll is read-only (202 / 200); no public approve API.
-  # Some iOS builds derive this path rather than using the custom OTA suffix.
+  # Clients may poll <configured OTA URL>/activate, preserving the secret
+  # suffix; route it to the same read-only 202/200 activation status endpoint.
+  @ios_activation_suffix {
+    method POST
+    path /xiaozhi/ota/__IOS_SECRET__/activate
+    header Device-Id *
+    header Client-Id *
+  }
+  handle @ios_activation_suffix {
+    rewrite * /xiaozhi/ota/activate
+    reverse_proxy adapter:19009
+  }
+
+  # Also accept the standard fixed activation path. Neither route can approve.
   @ios_activation {
     method POST
     path /xiaozhi/ota/activate
