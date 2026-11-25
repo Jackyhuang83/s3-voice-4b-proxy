@@ -122,22 +122,22 @@ class P2Isolation(unittest.TestCase):
         self.assertIn('ready=0', docker_test)
 
     def test_install_invocation_cannot_shadow_coreutils_or_recurse(self):
-        # Regression for the real iPhone VPS failure: install() recursively invoked
-        # itself at "install -d", endlessly repeating PREFLIGHT/IMAGE_CACHED.
+        # Regression for the actual phone VPS issue: install() called itself at
+        # "install -d", continuously repeating PRECHECK / IMAGE_CACHED.
         import subprocess
 
-        self.assertNotRegex(DEPLOY, r"(?m)^install\\(\\) \\{")
+        self.assertNotRegex(DEPLOY, r"(?m)^install\(\) \{")
         self.assertIn("install_pilot() {", DEPLOY)
         self.assertIn("  install) install_pilot ;;", DEPLOY)
         self.assertIn('command install -d -m 0700 "$ROOT" "$ROOT/data"', DEPLOY)
-        body = DEPLOY.split("install_pilot() {", 1)[1].split("\\n}", 1)[0]
-        # Run the actual install_pilot shell body with harmless mocked Docker,
-        # stopping immediately after the first *real* temporary directory create.
+        body = DEPLOY.split("install_pilot() {", 1)[1].split("\n}", 1)[0]
+        # Execute the REAL install_pilot body with harmless Docker stubs. Exit
+        # immediately after coreutils creates a temporary directory.
         shell = r"""
 set -Eeuo pipefail
 ROOT="$1"
 PYTHON_TAG="synthetic"
-preflight() { printf 'PREFLIGHT_ONCE\\n'; }
+preflight() { printf 'PREFLIGHT_ONCE\n'; }
 baseline_ids() { printf 'same-original-containers'; }
 docker() { :; }
 image_digest() { printf 'python@sha256:synthetic'; }
@@ -145,10 +145,10 @@ resources_pre() { :; }
 msg() { :; }
 chown() {
   test -d "$ROOT/data"
-  printf 'INSTALL_DIR_CREATED\\n'
+  printf 'INSTALL_DIR_CREATED\n'
   exit 0
 }
-""" + "install_pilot() {\\n" + body + "\\n}\\ninstall_pilot\\n"
+""" + "install_pilot() {\n" + body + "\n}\ninstall_pilot\n"
         with tempfile.TemporaryDirectory() as folder:
             stage = str(pathlib.Path(folder) / "install-stage")
             p = subprocess.run(
