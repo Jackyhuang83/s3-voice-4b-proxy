@@ -211,6 +211,10 @@ docker() {
             r"(?:docker.*(?:restart|rm|stop)|run\([^\n]*restart)[^\n]*s3-voice-ai-server",
         )
         self.assertIn("A09_DIAG_", script)
+        self.assertIn('choices=("arm", "report", "rollback", "session")', script)
+        self.assertIn('def session():', script)
+        self.assertIn('finally:\n        rollback()', script)
+        self.assertIn('open("/dev/tty"', script)
         self.assertIn("missing_client_id", ADAPTER)
         self.assertIn("RequestDiagnostics", ADAPTER)
         self.assertNotIn("self.log_message(", ADAPTER)
