@@ -221,7 +221,9 @@ chown() {
 
     def test_cloudflare_owner_action_and_real_audio_not_claimed(self):
         self.assertIn("ios-voice.cncloudx.com", DEPLOY)
-        self.assertIn("s3-voice-a09-lite-gateway:8080", DOCS)
+        self.assertIn("voice.cncloudx.com", DOCS)
+        self.assertIn("existing Cloudflare Tunnel", DOCS)
+        self.assertIn("s3-voice-a09-lite-gateway:8080", (ROOT / "tools/ai/a09_same_host.py").read_text())
         self.assertIn("Cloudflare", DOCS)
         self.assertIn("Hi 小智", DOCS)
         self.assertIn("P2 BLOCKED", DOCS)
