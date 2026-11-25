@@ -27,6 +27,8 @@ mkdir -p "$TMP/data"
 sudo chown 10001:10001 "$TMP/data"
 sudo chmod 0700 "$TMP/data"
 cp "$ROOT/tools/ai/a09_lite.py" "$TMP/a09_lite.py"
+# Runner umask 077 must not block non-root UID10001 on the read-only file mount.
+chmod 0644 "$TMP/a09_lite.py"
 cp "$ROOT/deploy/ai/a09-lite/docker-compose.yml" "$CONFFILE"
 secret="$(openssl rand -hex 32)"
 python3 - "$ROOT/deploy/ai/a09-lite/Caddyfile.in" "$TMP/Caddyfile" "$secret" <<'PY'
