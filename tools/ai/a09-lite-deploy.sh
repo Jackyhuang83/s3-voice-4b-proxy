@@ -172,9 +172,131 @@ approve() {
   test -r "$ENVFILE" || die 'not installed'
   test "$(docker inspect -f '{{.State.Running}}' s3-voice-a09-lite-adapter 2>/dev/null)" = true || die 'adapter not running'
   local code
-  read -r -s -p 'Private six-digit Hi Xiaozhi code: ' code
+  # The installer is often pasted as a multiline command in mobile SSH.
+  # Read directly from the controlling terminal, NEVER from the paste buffer
+  # or a pipe: otherwise the prompt can consume an empty/queued command line.
+  test -r /dev/tty || die 'interactive SSH terminal unavailable; no action taken'
+  printf 'Hi Xiaozhi App six-digit code (input hidden): type six digits then Return.\n' >&2
+  if ! IFS= read -r -s code </dev/tty; then
+    printf '\n' >&2
+    die 'terminal input ended; use a standalone approve command'
+  fi
   printf '\n' >&2
-  [[ "$code" =~ ^[0-9]{6}$ ]] || die 'expected six digits; no action taken'
+  # Some iOS terminal clients wrap pasted text in bracketed-paste markers.
+  # Accept only one exact wrapped code or six manually typed digits.
+  if [[ "$code" == 
+  # Pass via stdin rather than command args/environment or shell history.
+  printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
+  unset code
+}
+revoke() {
+  require_root
+  test -r "$ENVFILE" || die 'not installed'
+  test "$#" = 1 || die 'revoke requires an exact MAC device identity'
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || die 'invalid device identity'
+  docker exec -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 revoke "$1"
+}
+stop() {
+  require_root
+  test -r "$ENVFILE" || die 'A09-Lite not installed'
+  comp stop gateway adapter >/dev/null
+  original_healthy
+  msg STOP_PASS 'stopped only A09-Lite; isolated database retained; original 4B unchanged'
+}
+case "${1:-}" in
+  preflight) preflight ;;
+  install) install_pilot ;;
+  status) status ;;
+  approve) approve ;;
+  revoke) test "$#" -eq 2 || die 'revoke <MAC>'; revoke "$2" ;;
+  stop) stop ;;
+  *) printf 'Usage: sudo bash tools/ai/a09-lite-deploy.sh preflight|install|status|approve|revoke <MAC>|stop\n' >&2; exit 2 ;;
+esac\e[200~'*
+  # Pass via stdin rather than command args/environment or shell history.
+  printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
+  unset code
+}
+revoke() {
+  require_root
+  test -r "$ENVFILE" || die 'not installed'
+  test "$#" = 1 || die 'revoke requires an exact MAC device identity'
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || die 'invalid device identity'
+  docker exec -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 revoke "$1"
+}
+stop() {
+  require_root
+  test -r "$ENVFILE" || die 'A09-Lite not installed'
+  comp stop gateway adapter >/dev/null
+  original_healthy
+  msg STOP_PASS 'stopped only A09-Lite; isolated database retained; original 4B unchanged'
+}
+case "${1:-}" in
+  preflight) preflight ;;
+  install) install_pilot ;;
+  status) status ;;
+  approve) approve ;;
+  revoke) test "$#" -eq 2 || die 'revoke <MAC>'; revoke "$2" ;;
+  stop) stop ;;
+  *) printf 'Usage: sudo bash tools/ai/a09-lite-deploy.sh preflight|install|status|approve|revoke <MAC>|stop\n' >&2; exit 2 ;;
+esac\e[201~' ]]; then
+    code="${code#*
+  # Pass via stdin rather than command args/environment or shell history.
+  printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
+  unset code
+}
+revoke() {
+  require_root
+  test -r "$ENVFILE" || die 'not installed'
+  test "$#" = 1 || die 'revoke requires an exact MAC device identity'
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || die 'invalid device identity'
+  docker exec -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 revoke "$1"
+}
+stop() {
+  require_root
+  test -r "$ENVFILE" || die 'A09-Lite not installed'
+  comp stop gateway adapter >/dev/null
+  original_healthy
+  msg STOP_PASS 'stopped only A09-Lite; isolated database retained; original 4B unchanged'
+}
+case "${1:-}" in
+  preflight) preflight ;;
+  install) install_pilot ;;
+  status) status ;;
+  approve) approve ;;
+  revoke) test "$#" -eq 2 || die 'revoke <MAC>'; revoke "$2" ;;
+  stop) stop ;;
+  *) printf 'Usage: sudo bash tools/ai/a09-lite-deploy.sh preflight|install|status|approve|revoke <MAC>|stop\n' >&2; exit 2 ;;
+esac\e[200~'}"
+    code="${code%
+  # Pass via stdin rather than command args/environment or shell history.
+  printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
+  unset code
+}
+revoke() {
+  require_root
+  test -r "$ENVFILE" || die 'not installed'
+  test "$#" = 1 || die 'revoke requires an exact MAC device identity'
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || die 'invalid device identity'
+  docker exec -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 revoke "$1"
+}
+stop() {
+  require_root
+  test -r "$ENVFILE" || die 'A09-Lite not installed'
+  comp stop gateway adapter >/dev/null
+  original_healthy
+  msg STOP_PASS 'stopped only A09-Lite; isolated database retained; original 4B unchanged'
+}
+case "${1:-}" in
+  preflight) preflight ;;
+  install) install_pilot ;;
+  status) status ;;
+  approve) approve ;;
+  revoke) test "$#" -eq 2 || die 'revoke <MAC>'; revoke "$2" ;;
+  stop) stop ;;
+  *) printf 'Usage: sudo bash tools/ai/a09-lite-deploy.sh preflight|install|status|approve|revoke <MAC>|stop\n' >&2; exit 2 ;;
+esac\e[201~'}"
+  fi
+  [[ "$code" =~ ^[0-9]{6}$ ]] || die 'terminal did not receive exactly six digits; no action taken'
   # Pass via stdin rather than command args/environment or shell history.
   printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
   unset code
