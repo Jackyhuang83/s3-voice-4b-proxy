@@ -12,6 +12,8 @@ GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"  # Required for actual RFC6455 upgrade handshake.
+
     def log_message(self, *_):
         pass
 
