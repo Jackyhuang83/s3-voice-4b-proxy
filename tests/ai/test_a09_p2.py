@@ -199,7 +199,7 @@ docker() {
             "same_inode_write", "caddy_adapt(changed)", "caddy_reload()",
             "diagnostics()", "A09 owner directory", "guard_resources(before)",
             "original 4B container", "def rollback(", "def report(",
-            "No new host ports",
+            "s3-voice-a09-lite-adapter:19009",
         ):
             self.assertIn(required, script)
         self.assertIn('path /xiaozhi/ota/" + secret', script)
