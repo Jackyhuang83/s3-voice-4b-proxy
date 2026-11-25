@@ -71,9 +71,17 @@ preflight() {
 }
 image_digest() {
   local img="$1" repo="${1%%:*}" digest
-  docker pull "$img" >/dev/null || die 'official Python image pull failed'
-  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$img" | grep -F "${repo}@sha256:" | head -n 1 || true)"
-  [[ "$digest" == "${repo}@sha256:"* ]] || die 'immutable Python digest unavailable'
+  # Image may already be on disk after an interrupted iPhone/SSH pilot.
+  # Only trust locally cached images when Docker reports an immutable repo digest.
+  digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$img" 2>/dev/null | grep -F "${repo}@sha256:" | head -n 1 || true)"
+  if [[ "$digest" == "${repo}@sha256:"* ]]; then
+    msg IMAGE_CACHED 'verified local Python image digest; skipping network pull' >&2
+  else
+    msg IMAGE_PULL 'no verified local digest; pulling Python image (progress visible)' >&2
+    docker pull "$img" >&2 || die 'official Python image pull failed'
+    digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$img" | grep -F "${repo}@sha256:" | head -n 1 || true)"
+    [[ "$digest" == "${repo}@sha256:"* ]] || die 'immutable Python digest unavailable'
+  fi
   printf '%s' "$digest"
 }
 stop_new_on_error() {
@@ -112,6 +120,7 @@ install() {
   caddy_image="$(docker inspect -f '{{.Image}}' s3-voice-ai-gateway)"
   docker image inspect "$caddy_image" >/dev/null || die 'original Caddy image missing locally'
   python_image="$(image_digest "$PYTHON_TAG")"
+  msg INSTALL_STAGE 'Python image ready; checking original container identity' >&2
   resources_pre
   test "$(baseline_ids)" = "$original_ids" || die 'original container changed during image resolution'
   test ! -e "$ROOT" && test ! -L "$ROOT" || die 'A09-Lite directory unexpectedly appeared'
