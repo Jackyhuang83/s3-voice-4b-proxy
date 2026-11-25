@@ -77,6 +77,13 @@ sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" install > "$TMP/install.log" 2>&1 
 grep -q '^A09_P2_PREFLIGHT_PASS:' "$TMP/install.log"
 grep -q '^A09_P2_GATE_PASS:' "$TMP/install.log"
 grep -q '^A09_P2_PILOT_PASS:' "$TMP/install.log"
+
+# Reproduce the user's ALREADY-installed A09 adapter, not a fresh new build.
+BASELINE_A09=c0bb348deac4edf4be079e540ccc5aafffa39d00
+git -C "$ROOT" fetch -q --depth 1 origin "$BASELINE_A09"
+git -C "$ROOT" show "$BASELINE_A09:tools/ai/a09_lite.py" | sudo tee "$STAGE/a09_lite.py" >/dev/null
+docker restart s3-voice-a09-lite-adapter >/dev/null
+
 grep -q '^A09_P2_PUBLIC_NOT_READY:' "$TMP/install.log"
 for n in s3-voice-a09-lite-adapter s3-voice-a09-lite-gateway; do
   test "$(docker inspect -f '{{.State.Running}}' "$n")" = true
@@ -171,6 +178,39 @@ assert ws('/xiaozhi/v1/'+'a'*64,headers['Device-Id'],
           headers['Client-Id'],legacy['websocket']['token'])==101
 print('A09_P2_SAME_HOST_ROUTE_CI_PASS: old 4B OTA/WS101 and new iPhone OTA, owner approve, WS403/101')
 PY
+before_diag="$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
+sudo python3 "$ROOT/tools/ai/a09_diagnose.py" arm > "$TMP/diag-arm.log" 2>&1 || {
+  tail -n 35 "$TMP/diag-arm.log" >&2
+  echo A09_DIAG_CI_ARM_FAILED >&2
+  exit 1
+}
+grep -q '^A09_DIAG_ARM_PASS:' "$TMP/diag-arm.log"
+sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-initial.log"
+grep -q '^A09_DIAG_VERDICT: NO_A09_OTA_REACHED' "$TMP/diag-initial.log"
+# Missing Client-Id must reach the NEW adapter, be counted, and fail HTTP 400.
+sudo python3 - "$STAGE/.env" <<'PY'
+import sys,urllib.request,urllib.error
+env=dict(line.split('=',1) for line in open(sys.argv[1]).read().splitlines())
+req=urllib.request.Request(
+    'http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET'],
+    data=b'{"application":{"version":"2.6.0"}}',
+    headers={'Device-Id':'02:01:02:03:04:77','Content-Type':'application/json'},
+    method='POST')
+try:
+    urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=8)
+    raise SystemExit('A09_DIAG_CI_MISSING_ID_NOT_REJECTED')
+except urllib.error.HTTPError as e:
+    assert e.code==400,e.code
+PY
+sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-final.log"
+grep -q '^A09_DIAG_VERDICT: MISSING_REQUIRED_IDENTITY' "$TMP/diag-final.log"
+grep -q 'missing_client_id=1' "$TMP/diag-final.log"
+grep -q 'ota_seen=1' "$TMP/diag-final.log"
+sudo python3 "$ROOT/tools/ai/a09_diagnose.py" rollback > "$TMP/diag-rollback.log"
+grep -q '^A09_DIAG_ROLLBACK_PASS:' "$TMP/diag-rollback.log"
+test "$before_diag" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
+test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
+echo 'A09_DIAG_CI_PASS: old adapter upgraded temporarily; missing Client-Id counted/denied; exact Caddy and adapter restored'
 sudo python3 "$ROOT/tools/ai/a09_same_host.py" rollback > "$TMP/rollback.log" 2>&1
 grep -q '^A09_P2_SAME_HOST_ROLLBACK_PASS:' "$TMP/rollback.log"
 test "$before_a04" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
