@@ -24,6 +24,7 @@ jobs:
         run: |
           bash -n tools/ai/a09-lite-deploy.sh
           bash -n tests/ai/a09_p2_docker.sh
+          bash -n tests/ai/a09_p2_install_docker.sh
           python -m py_compile tools/ai/a09_lite.py tests/ai/a09_p2_fake_voice.py tests/ai/test_a09_p2.py
       - name: P1 regression and P2 isolation security contracts
         run: |
@@ -37,3 +38,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Genuine Caddy + Python 3.13 isolated activation/WS HMAC
         run: bash tests/ai/a09_p2_docker.sh
+  install-pilot-simulator:
+    needs: [static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise actual production install / status / stop against isolated fake A03-A04
+        run: bash tests/ai/a09_p2_install_docker.sh
