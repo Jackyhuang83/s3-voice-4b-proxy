@@ -314,12 +314,25 @@ def report():
     announce("READ_ONLY_PASS", "no secret/device identities displayed or changed")
 
 
+def session():
+    """One terminal command: arm, one phone attempt, read result, restore."""
+    ensure(os.isatty(0), "interactive SSH terminal required")
+    arm()
+    try:
+        announce("ACTION", "open Hi Xiaozhi and try ONE connection, then return to SSH and press Return")
+        with open("/dev/tty", "r", encoding="utf-8") as terminal:
+            terminal.readline()
+        report()
+    finally:
+        rollback()
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("arm", "report", "rollback"))
+    parser.add_argument("command", choices=("arm", "report", "rollback", "session"))
     arg = parser.parse_args()
     try:
-        {"arm": arm, "report": report, "rollback": rollback}[arg.command]()
+        {"arm": arm, "report": report, "rollback": rollback, "session": session}[arg.command]()
     except (Blocked, OSError, subprocess.TimeoutExpired, ValueError, KeyError,
             UnicodeError, json.JSONDecodeError) as e:
         # Exception details never contain request URI or secret.
