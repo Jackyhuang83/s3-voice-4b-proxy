@@ -123,7 +123,7 @@ class P2Isolation(unittest.TestCase):
 
     def test_cached_digest_skips_pull_and_shows_progress_on_fallback(self):
         # Avoid a second hidden image pull after Ctrl+C on a phone SSH session.
-        script = DEPLOY.split("image_digest() {", 1)[1].split("\\n}", 1)[0]
+        script = DEPLOY.split("image_digest() {", 1)[1].split("stop_new_on_error() {", 1)[0]
         self.assertIn("IMAGE_CACHED", script)
         self.assertIn("IMAGE_PULL", script)
         self.assertLess(script.index("docker image inspect"), script.index("docker pull"))
