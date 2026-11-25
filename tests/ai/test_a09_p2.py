@@ -192,6 +192,29 @@ docker() {
         self.assertIn("  pending) pending ;;", DEPLOY)
         self.assertIn("  pending\n  msg STATUS", DEPLOY)
 
+    def test_reversible_private_ota_diagnostic_guard(self):
+        script = (ROOT / "tools/ai/a09_diagnose.py").read_text()
+        for required in (
+            "KNOWN_OLD_BLOB", "private_create(OLD_APP", "private_create(OLD_A04",
+            "same_inode_write", "caddy_adapt(changed)", "caddy_reload()",
+            "diagnostics()", "A09 owner directory", "guard_resources(before)",
+            "original 4B container", "def rollback(", "def report(",
+            "No new host ports",
+        ):
+            self.assertIn(required, script)
+        self.assertIn('path /xiaozhi/ota/" + secret', script)
+        self.assertIn("A09_DIAG_%s", script)
+        self.assertNotIn("docker prune", script)
+        self.assertNotIn("docker compose down", script)
+        self.assertNotRegex(
+            script,
+            r"(?:docker.*(?:restart|rm|stop)|run\([^\n]*restart)[^\n]*s3-voice-ai-server",
+        )
+        self.assertIn("A09_DIAG_", script)
+        self.assertIn("missing_client_id", ADAPTER)
+        self.assertIn("RequestDiagnostics", ADAPTER)
+        self.assertNotIn("self.log_message(", ADAPTER)
+
     def test_ci_uses_real_websocket_upgrade_not_urllib_connection_close(self):
         docker_test = (ROOT / "tests/ai/a09_p2_docker.sh").read_text()
         self.assertIn("http_client.HTTPConnection", docker_test)
