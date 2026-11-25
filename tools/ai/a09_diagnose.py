@@ -188,7 +188,6 @@ def candidate(caddy, secret):
     # Only the separately secret A09 route changes, never original 4B rules.
     replacement = (
         "  @a09_ota {\n"
-        "    method POST\n"
         "    path /xiaozhi/ota/" + secret + "\n"
         "  }\n"
         "  handle @a09_ota {\n"
@@ -258,8 +257,11 @@ def arm():
         probe_headers = {"Device-Id": "02:00:00:00:00:09", "Content-Type": "application/json"}
         ensure(code(url, data=b"{}", headers=probe_headers) == 400,
                "temporary private route failed to enforce missing Client-Id")
+        ensure(code(url) == 405,
+               "temporary private route failed to classify GET instead of POST")
         snap = diagnostics()
         ensure(snap["counts"]["ota_seen"] >= 1 and
+               snap["counts"]["ota_get_seen"] >= 1 and
                snap["counts"]["missing_client_id"] >= 1,
                "privacy counters did not record missing Client-Id")
         ensure(code("http://127.0.0.1:18080/internal/diagnostics") == 403,
@@ -292,8 +294,10 @@ def report():
     # fingerprint of any particular phone. No user identity or code is stored.
     fmt = " ".join("%s=%d" % (k, v) for k, v in sorted(counts.items()))
     announce("COUNTS", fmt)
-    if counts["ota_seen"] == 0:
-        announce("VERDICT", "NO_A09_OTA_REACHED (client config/path/method/Cloudflare route not proven)")
+    if counts["ota_seen"] == 0 and counts["ota_get_seen"] > 0:
+        announce("VERDICT", "OTA_WRONG_METHOD (GET observed; server requires POST)")
+    elif counts["ota_seen"] == 0:
+        announce("VERDICT", "NO_A09_OTA_REACHED (client config/path/Cloudflare route not proven)")
     elif counts["missing_client_id"] or counts["missing_device_id"]:
         announce("VERDICT", "MISSING_REQUIRED_IDENTITY (do not auto-generate identifiers)")
     elif counts["bad_client_id"] or counts["bad_device_id"]:
