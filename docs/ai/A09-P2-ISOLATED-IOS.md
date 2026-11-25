@@ -59,7 +59,7 @@ With the new app displaying the real six digits, owner's root-shell action:
 sudo bash tools/ai/a09-lite-deploy.sh approve
 ```
 
-Code entry is hidden and passed via stdin, not shell history or process command-line arguments. Recheck that the specific device belongs to the owner. If the App remains unbound or prompts repeatedly, do not make the endpoint publicly auto-approve; record only redacted HTTP status/missing field evidence. `revoke <MAC>` is optional after a security event; avoid printing unique identifiers in public channels.
+The six digits are visibly echoed in the owner's interactive SSH terminal for input confirmation; the code is read directly from `/dev/tty` and passed to the adapter via stdin, never placed in shell history or process command-line arguments. As a short-lived activation credential, do not share a screenshot containing the code. Recheck that the specific device belongs to the owner. If the App remains unbound or prompts repeatedly, do not make the endpoint publicly auto-approve; record only redacted HTTP status/missing field evidence. `revoke <MAC>` is optional after a security event; avoid printing unique identifiers in public channels.
 
 ## Rollback and success criteria
 
