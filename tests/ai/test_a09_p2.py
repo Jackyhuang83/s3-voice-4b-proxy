@@ -114,6 +114,13 @@ class P2Isolation(unittest.TestCase):
                 self.assertEqual(module.main(["--db", str(db), "approve", "-"]), 0)
             self.assertTrue(store.approved("02:23:45:67:89:ab", "uuid-4"))
 
+    def test_ci_uses_real_websocket_upgrade_not_urllib_connection_close(self):
+        docker_test = (ROOT / "tests/ai/a09_p2_docker.sh").read_text()
+        self.assertIn("http.client.HTTPConnection", docker_test)
+        self.assertIn("'Connection':'Upgrade'", docker_test)
+        self.assertIn("approved_ws==101", docker_test)
+        self.assertIn('ready=0', docker_test)
+
     def test_cloudflare_owner_action_and_real_audio_not_claimed(self):
         self.assertIn("ios-voice.cncloudx.com", DEPLOY)
         self.assertIn("s3-voice-a09-lite-gateway:8080", DOCS)
