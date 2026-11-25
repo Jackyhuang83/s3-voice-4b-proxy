@@ -176,12 +176,10 @@ approve() {
   # Read directly from the controlling terminal, NEVER from the paste buffer
   # or a pipe: otherwise the prompt can consume an empty/queued command line.
   test -r /dev/tty || die 'interactive SSH terminal unavailable; no action taken'
-  printf 'Hi Xiaozhi App six-digit code (input hidden): type six digits then Return.\n' >&2
-  if ! IFS= read -r -s code </dev/tty; then
-    printf '\n' >&2
+  printf 'Hi Xiaozhi six-digit code (visible): type all 6 digits, check, then press Return: ' >&2
+  if ! IFS= read -r code </dev/tty; then
     die 'terminal input ended; use a standalone approve command'
   fi
-  printf '\n' >&2
   # Accept only six ASCII digits, avoiding accidental shell paste or newline.
   [[ "$code" =~ ^[0-9]{6}$ ]] || die 'terminal did not receive exactly six digits; no action taken'
   # Pass via stdin rather than command args/environment or shell history.
