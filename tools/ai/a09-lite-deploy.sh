@@ -182,9 +182,8 @@ approve() {
     die 'terminal input ended; use a standalone approve command'
   fi
   printf '\n' >&2
-  # Some iOS terminal clients wrap pasted text in bracketed-paste markers.
-  # Accept only one exact wrapped code or six manually typed digits.
-  if [[ "$code" == 
+  # Accept only six ASCII digits, avoiding accidental shell paste or newline.
+  [[ "$code" =~ ^[0-9]{6}$ ]] || die 'terminal did not receive exactly six digits; no action taken'
   # Pass via stdin rather than command args/environment or shell history.
   printf '%s\n' "$code" | docker exec -i -u 10001 s3-voice-a09-lite-adapter python -I /app/a09_lite.py --db /var/lib/s3-voice-a09-lite/activation.sqlite3 approve -
   unset code
