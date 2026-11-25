@@ -129,6 +129,16 @@ with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,t
     body=json.load(resp)
 assert body['websocket']['url'].startswith('wss://voice.cncloudx.com/xiaozhi/v1/')
 assert len(body['activation']['code'])==6
+secret_ota='http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET']+'/activate'
+def activation_code():
+    req=urllib.request.Request(secret_ota,data=b'{}',headers=headers,method='POST')
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=8) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+assert activation_code()==202
+
 secret=env['IOS_SECRET']
 device='02:ab:cd:ef:45:67'
 client='a09-same-host-test'
@@ -140,6 +150,7 @@ p=subprocess.run(['docker','exec','-i','-u','10001','s3-voice-a09-lite-adapter',
                   'approve','-'],
                  input=body['activation']['code']+'\n',capture_output=True,text=True,timeout=10)
 assert p.returncode==0,p.stderr
+assert activation_code()==200
 assert ws('/xiaozhi/v1/'+secret,device,client,token)==101
 assert ws('/xiaozhi/v1/'+secret,device,client,'bad.fake')==403
 assert ws('/xiaozhi/v1/'+secret,device,'other-device',token)==403
