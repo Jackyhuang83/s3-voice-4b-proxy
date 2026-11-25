@@ -57,10 +57,24 @@ for i in $(seq 1 40); do
   if docker exec s3-voice-a09-lite-adapter python -I -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:19009/health',timeout=2)" >/dev/null 2>&1; then break; fi
   sleep 1
 done
+# Caddy can still be initializing after adapter health is green.
+ready=0
+for i in $(seq 1 40); do
+  if docker exec s3-voice-a09-lite-adapter python -I -c '
+import urllib.request,urllib.error
+try:
+    urllib.request.build_opener(urllib.request.ProxyHandler({})).open("http://gateway:8080/",timeout=2)
+    raise SystemExit(1)
+except urllib.error.HTTPError as e:
+    assert e.code==403,e.code
+' >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+test "$ready" = 1 || { echo A09_P2_CI_GATE_NOT_READY >&2; exit 1; }
 # The CI client executes from adapter's isolated Docker namespace and reads
 # its own WSS URL from env, so no secret or active 4B identifier is logged.
 docker exec -i s3-voice-a09-lite-adapter python -I - <<'PY'
-import base64, json, os, socket, subprocess, sys, urllib.error, urllib.parse, urllib.request
+import base64, http.client, json, os, subprocess, sys, urllib.error, urllib.request
 DEVICE = '02:ab:cd:ef:45:67'
 CLIENT = '9dabdafe-3d8a-4e40-97d5-2e05c310c912'
 WSS = os.environ['A09_LITE_WSS_URL']
@@ -79,11 +93,18 @@ def http(path, method='POST', headers=None):
         return e.code,e.read()
 
 def ws(device=DEVICE, client=CLIENT, token='', route=None):
+    # urllib forces Connection: close and cannot perform WebSocket upgrades.
     headers = {'Device-Id':device, 'Client-Id':client,
                'Authorization':'Bearer '+token, 'Upgrade':'websocket',
                'Connection':'Upgrade', 'Sec-WebSocket-Key':base64.b64encode(os.urandom(16)).decode(),
                'Sec-WebSocket-Version':'13'}
-    return http('/xiaozhi/v1/'+(route or SECRET), method='GET', headers=headers)[0]
+    conn=http.client.HTTPConnection('gateway',8080,timeout=5)
+    try:
+        conn.request('GET','/xiaozhi/v1/'+(route or SECRET),headers=headers)
+        resp=conn.getresponse()
+        return resp.status
+    finally:
+        conn.close()
 
 assert http('/')[0]==403
 assert http('/health',method='GET')[0]==403
@@ -106,7 +127,8 @@ assert ws(device='02:ab:cd:ef:45:68',token=token)==403
 proc=subprocess.run([sys.executable,'-I','/app/a09_lite.py','--db','/var/lib/s3-voice-a09-lite/activation.sqlite3','approve','-'],input=code+'\n',text=True,capture_output=True,timeout=5)
 assert proc.returncode==0,proc.stderr
 assert http('/xiaozhi/ota/activate')[0]==200
-assert ws(token=token)==101
+approved_ws=ws(token=token)
+assert approved_ws==101, f"approved websocket HTTP {approved_ws}; expected 101"
 assert ws(client='9dabdafe-3d8a-4e40-97d5-2e05c310c913',token=token)==403
 assert ws(token='bogus.fake')==403
 status, body=http('/xiaozhi/ota/'+SECRET)
