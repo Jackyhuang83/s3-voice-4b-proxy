@@ -72,3 +72,16 @@ This only stops new A09-Lite containers and retains the private SQLite and keys 
 **P2 acceptance requires all:** original 4B OTA+WSS+audible voice PASS; iPhone OTA 200 with code + HMAC token, 202→200 only after owner CLI approval, iPhone WS 101 and full microphone→Vosk→GPT→EdgeTTS→speaker, no abnormal swaps or production regressions. Until then **P2 BLOCKED** (source/CI PASS is a separate level).
 
 Upstream sources: `xinnan-tech/xiaozhi-esp32-server@v0.9.8` Java `OTAController.java`, `DeviceServiceImpl.java`, Python `ota_handler.py`, `core/auth.py`; Caddy official `forward_auth`, `reverse_proxy`; official Caddy Docker image reload guidance. The P2 design deliberately avoids reloading original Caddy altogether.
+## P2.1 same-host convergence (roadmap change, 2026-11-25)
+
+Owner requirement updated: **reuse existing `voice.cncloudx.com` and the already-running Cloudflare Tunnel, NO new hostname, DNS, published app, or cloudflared restart.** P0 (official protocol review, 20%) and P1 (stdlib 6-digit adapter, 50%) remain 100% accepted. P2 (30%) is still 0% accepted until the real iPhone call + original Waveshare 4B speech regression succeed. Changes stay within **Draft PR #30**; no extra PR fragmentation.
+
+P2 sequence/acceptance:
+1. **P2-A, source/reuse** (8/30): inspect current `/opt/s3-voice-ai-edge/Caddyfile`, `/opt/s3-voice-a09-lite/.env` and Docker bridge membership, preserve the exact original A04 4B identity and HMAC. Zero firmware change.
+2. **P2-B, path extension** (12/30): generate a narrowly-scoped extra route inside existing A04 Caddy, only for the separately secret iOS OTA/WS and standard activation poll; validate Caddy syntax before write; save private byte-for-byte original and rollback on error; gracefully reload Caddy via official `caddy reload` (no container restart). Change only the **new A09 adapter**'s WSS hostname to `voice.cncloudx.com`. Original A04 OTA and WS rules must remain identical.
+3. **P2-C, integrated acceptance** (10/30): automated ephemeral Docker full install/status/same-host/rollback/stop, original 4B A04 simulator identity/route checks and negative security; target VPS local/public single-host OTA, forbidden default route, original OTA, memory/swap guard; one real Hi 小智 microphone→LLM→speaker + original ESP32 4B audio check.
+
+CI gates are **not** real-phone proof. The closed-source App Store "Hi 小智" claims custom OTA, WebSocket and Token fields, but its handling of nonstandard OTA suffix and activation response has not been verified on-device. If final device fails, do not claim P2 accepted or automatically weaken authentication. Keep rollback command and original Caddy backup.
+
+**Safety:** Same-host extension deliberately touches the *existing A04 Caddy configuration*, not its container image or 4B firmware. Requires a protective exact-source check, read-only template parse, a backup and immediate automatic rollback before any active config alteration. Do not edit existing Cloudflare account rules or connector; do not enable new host listener. Pilot must STOP if it cannot guarantee graceful reload and old 4B route preservation.
+
