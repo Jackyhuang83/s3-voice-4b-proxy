@@ -121,6 +121,15 @@ class P2Isolation(unittest.TestCase):
         self.assertIn("approved_ws==101", docker_test)
         self.assertIn('ready=0', docker_test)
 
+    def test_cached_digest_skips_pull_and_shows_progress_on_fallback(self):
+        # Avoid a second hidden image pull after Ctrl+C on a phone SSH session.
+        script = DEPLOY.split("image_digest() {", 1)[1].split("\\n}", 1)[0]
+        self.assertIn("IMAGE_CACHED", script)
+        self.assertIn("IMAGE_PULL", script)
+        self.assertLess(script.index("docker image inspect"), script.index("docker pull"))
+        self.assertIn('docker pull "$img" >&2', script)
+        self.assertIn("immutable Python digest unavailable", script)
+
     def test_cloudflare_owner_action_and_real_audio_not_claimed(self):
         self.assertIn("ios-voice.cncloudx.com", DEPLOY)
         self.assertIn("s3-voice-a09-lite-gateway:8080", DOCS)
