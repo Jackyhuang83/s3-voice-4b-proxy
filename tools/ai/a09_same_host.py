@@ -340,12 +340,22 @@ def status():
         note("STATUS", "same-host not yet active; original hostname is reserved for 4B")
 
 
+def show_url():
+    require_root()
+    guard(MARKER.is_file(), "same-host routing not active")
+    guard(sys.stdout.isatty(), "refuse to print private OTA credential outside interactive SSH")
+    variables = env_values(ENV.read_text())
+    guard(variables["IOS_HOSTNAME"] == HOST, "A09 still advertises another hostname")
+    print("HI_XIAOZHI_OTA_URL=https://" + HOST + "/xiaozhi/ota/" + variables["IOS_SECRET"],
+          flush=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["apply", "status", "rollback"])
+    parser.add_argument("command", choices=["apply", "status", "rollback", "show-url"])
     args = parser.parse_args()
     try:
-        {"apply": apply, "status": status, "rollback": rollback}[args.command]()
+        {"apply": apply, "status": status, "rollback": rollback, "show-url": show_url}[args.command]()
     except (Stop, OSError, subprocess.TimeoutExpired, ValueError) as exc:
         # Explicitly never print file contents, private path or signed token.
         note("BLOCKED", str(exc))
