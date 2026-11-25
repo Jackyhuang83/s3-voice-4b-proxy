@@ -136,7 +136,7 @@ install_pilot() {
 from pathlib import Path
 import sys
 src = Path(sys.argv[1]).read_text()
-assert src.count('__IOS_SECRET__')==2
+assert src.count('__IOS_SECRET__')==3
 Path(sys.argv[2]).write_text(src.replace('__IOS_SECRET__',sys.argv[3]))
 PY
   chmod 0444 "$ROOT/Caddyfile"
