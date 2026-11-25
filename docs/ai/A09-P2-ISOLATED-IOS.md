@@ -199,3 +199,24 @@ iPhone traffic. Verifying a past individual iPhone request in Cloudflare
 requires authorized Cloudflare account analytics/log access, not available
 from the GitHub repo. Never claim this source-level check proves the
 closed-source app's routing behavior.
+
+## P2-F: protocol decision after real edge PASS (2026-11-26)
+
+**Evidence (actual VPS, not a simulated mobile client):** exact A09 route and original 4B matchers are present; original and A09 containers share the expected front network with no restart; deliberately invalid OTA JSON array returned HTTP 400 through both `127.0.0.1:18080` and public `voice.cncloudx.com` with Cloudflare headers. This confirms that one *synthetic* request can reach the A09 rejection handler. It does not establish that Hi 小智 sent anything. The earlier bounded phone diagnostic showed zero A09 OTA/activate/WS-auth counters; that identifies **no observed request at the instrumented adapter**, not the upstream cause.
+
+**Stop repeating**: no more synthetic edge probes, A09 pending-code checks, or Caddy/tunnel modifications without NEW contrary evidence. Do not ask the owner to locate an "one-click diagnosis" control: the App Store marketing description is not proof this control exists in the installed Hi 小智 build. Do not claim that a saved custom OTA URL necessarily implies an OTA POST.
+
+**Contract-backed limitation:** official ESP32 OTA uses `POST /xiaozhi/ota/` and device identity headers; this repo's A09-Lite generates a code only for a valid request. Hi 小智 (the separately distributed, apparently closed-source iOS app) has no reviewed matching request implementation in this PR. Its independent WebSocket/Token settings advertised in an App Store description do not prove which values/identities its runtime transmits. A server change cannot force a client to emit a request. Do not synthesize a device identity, bypass owner authorization, issue arbitrary six-digit codes, or modify the original 4B path to make the display appear successful.
+
+**Reuse candidates investigated, NOT deployed:**
+- `nancheung/open-xiaozhi-client` is an AGPL-3.0 web client with publicly inspectable OTA activation and WebSocket logic. Its browser WebSocket adapter carries `device-id`, `client-id` and `authorization` as URL query arguments because native browser WebSockets cannot set those headers. The current private A09 WSS Caddy route requires headers and therefore is NOT proven compatible without a dedicated, reviewed query-auth bridge; never expose query credentials in logs.
+- `goodko/xiaozhi-ios` is a separate SwiftUI iOS source project, **not** the user's Hi 小智 App Store binary. It requires an independent signed iOS build and has extra proprietary third-party assets. It is not a drop-in App Store workaround.
+- `liu731/xiaozhi` is a Flutter codebase with custom OTA, WS and MAC settings; its documented APK does not establish a readily installable signed iOS release.
+
+**Decision / work boundary:** retain the current A09-Lite same-host pilot and PR #30 as Draft. No speculative Hi 小智-specific fixes are authorized by this evidence. If the user elects an open-source client instead, first update the roadmap with an explicit optional P3/client compatibility work package, inspect source/license, and use isolated CI to prove A09 POST -> code -> owner approval -> WS authorization with exactly the client's real header/query behavior. Add no host listener/Cloudflare DNS, do not weaken authentication, preserve 4B and scoped rollback, and only then request *one* end-to-end iPhone acceptance. Until a concrete client path is selected and evidenced, project weighted acceptance remains P0 20 + P1 50 + P2 0 = **70%**; P2 remains BLOCKED.
+
+References:
+- https://docs.xiaozhi.me/zh/reference/ota.html
+- https://github.com/nancheung/open-xiaozhi-client/blob/main/src/adapters/transport/WebSocketTransport.ts
+- https://github.com/goodko/xiaozhi-ios
+- https://github.com/liu731/xiaozhi
