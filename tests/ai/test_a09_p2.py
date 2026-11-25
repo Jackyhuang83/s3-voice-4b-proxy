@@ -74,7 +74,7 @@ class P2Isolation(unittest.TestCase):
         pre = DEPLOY.split("preflight() {", 1)[1].split("\n}", 1)[0]
         for text in ("docker pull", "docker compose up", "comp up", "mkdir ", "install -d", "docker restart", "cp ", "chown"):
             self.assertNotIn(text, pre)
-        install = DEPLOY.split("install() {", 1)[1].split("\n}", 1)[0]
+        install = DEPLOY.split("install_pilot() {", 1)[1].split("\n}", 1)[0]
         self.assertLess(install.index("preflight\n"), install.index("image_digest"))
         self.assertIn("original_healthy", pre)
         self.assertIn("resources_pre", pre)
