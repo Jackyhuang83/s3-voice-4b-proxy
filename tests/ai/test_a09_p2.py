@@ -104,7 +104,7 @@ class P2Isolation(unittest.TestCase):
 
     def test_owner_approve_stdin_is_not_logged_in_command_arguments(self):
         self.assertIn("approve -", DEPLOY)
-        self.assertIn("read -r -s", DEPLOY)
+        self.assertIn("read -r code </dev/tty", DEPLOY)
         self.assertIn("sys.stdin.readline().strip()", ADAPTER)
         with tempfile.TemporaryDirectory() as folder:
             db = pathlib.Path(folder) / "test.sqlite"
