@@ -131,7 +131,7 @@ with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,t
 assert body['websocket']['url'].startswith('wss://voice.cncloudx.com/xiaozhi/v1/')
 assert len(body['activation']['code'])==6
 # Verify a pending code exists on THIS adapter without disclosing its value.
-summary=subprocess.check_output(['bash',os.path.join(os.environ['GITHUB_WORKSPACE'],'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
+summary=subprocess.check_output(['bash',os.path.join(os.getcwd(),'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
 assert 'active=1' in summary,(summary,)
 secret_ota='http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET']+'/activate'
 def activation_code():
@@ -154,7 +154,7 @@ p=subprocess.run(['docker','exec','-i','-u','10001','s3-voice-a09-lite-adapter',
                   'approve','-'],
                  input=body['activation']['code']+'\n',capture_output=True,text=True,timeout=10)
 assert p.returncode==0,p.stderr
-summary=subprocess.check_output(['bash',os.path.join(os.environ['GITHUB_WORKSPACE'],'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
+summary=subprocess.check_output(['bash',os.path.join(os.getcwd(),'tools/ai/a09-lite-deploy.sh'),'pending'],text=True)
 assert 'active=0' in summary and 'approved=1' in summary,(summary,)
 assert activation_code()==200
 assert ws('/xiaozhi/v1/'+secret,device,client,token)==101
