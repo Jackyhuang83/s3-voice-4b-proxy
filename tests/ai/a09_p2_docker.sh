@@ -121,12 +121,14 @@ code=answer['activation']['code']
 token=answer['websocket']['token']
 print('A09_P2_CI_OTA_PASS: six digits, existing HMAC and distinct iOS WSS')
 assert http('/xiaozhi/ota/activate')[0]==202
+assert http('/xiaozhi/ota/'+SECRET+'/activate')[0]==202
 assert ws(token=token)==403
 assert ws(device='02:ab:cd:ef:45:68',token=token)==403
 # Owner approval is CLI only; no HTTP approval endpoint.
 proc=subprocess.run([sys.executable,'-I','/app/a09_lite.py','--db','/var/lib/s3-voice-a09-lite/activation.sqlite3','approve','-'],input=code+'\n',text=True,capture_output=True,timeout=5)
 assert proc.returncode==0,proc.stderr
 assert http('/xiaozhi/ota/activate')[0]==200
+assert http('/xiaozhi/ota/'+SECRET+'/activate')[0]==200
 approved_ws=ws(token=token)
 assert approved_ws==101, f"approved websocket HTTP {approved_ws}; expected 101"
 assert ws(client='9dabdafe-3d8a-4e40-97d5-2e05c310c913',token=token)==403
