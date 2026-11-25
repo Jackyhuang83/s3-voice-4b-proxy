@@ -178,107 +178,16 @@ assert ws('/xiaozhi/v1/'+'a'*64,headers['Device-Id'],
           headers['Client-Id'],legacy['websocket']['token'])==101
 print('A09_P2_SAME_HOST_ROUTE_CI_PASS: old 4B OTA/WS101 and new iPhone OTA, owner approve, WS403/101')
 PY
-# Purely read-only audit against the real bound A04 Caddy route.
-# The production audit also queries public Cloudflare, but CI uses local-only.
+# Read-only audit of ACTUAL A04 bind mount and its local secret OTA route.
 sudo python3 "$ROOT/tools/ai/a09_edge_audit.py" --local-only > "$TMP/edge-audit.log" 2>&1 || {
   cat "$TMP/edge-audit.log" >&2
   echo A09_EDGE_AUDIT_CI_FAILED >&2
   exit 1
 }
 grep -q '^A09_EDGE_CADDY_CONFIG: EXACT_A09_ROUTE_PRESENT;' "$TMP/edge-audit.log"
-grep -q '^A09_EDGE_LOCAL_HTTP: 400
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" arm > "$TMP/diag-arm.log" 2>&1 || {
-  tail -n 35 "$TMP/diag-arm.log" >&2
-  echo A09_DIAG_CI_ARM_FAILED >&2
-  exit 1
-}
-grep -q '^A09_DIAG_ARM_PASS:' "$TMP/diag-arm.log"
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-initial.log"
-grep -q '^A09_DIAG_VERDICT: NO_A09_OTA_REACHED' "$TMP/diag-initial.log"
-# Missing Client-Id must reach the NEW adapter, be counted, and fail HTTP 400.
-sudo python3 - "$STAGE/.env" <<'PY'
-import sys,urllib.request,urllib.error
-env=dict(line.split('=',1) for line in open(sys.argv[1]).read().splitlines())
-req=urllib.request.Request(
-    'http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET'],
-    data=b'{"application":{"version":"2.6.0"}}',
-    headers={'Device-Id':'02:01:02:03:04:77','Content-Type':'application/json'},
-    method='POST')
-try:
-    urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=8)
-    raise SystemExit('A09_DIAG_CI_MISSING_ID_NOT_REJECTED')
-except urllib.error.HTTPError as e:
-    assert e.code==400,e.code
-PY
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-final.log"
-grep -q '^A09_DIAG_VERDICT: MISSING_REQUIRED_IDENTITY' "$TMP/diag-final.log"
-grep -q 'missing_client_id=1' "$TMP/diag-final.log"
-grep -q 'ota_seen=1' "$TMP/diag-final.log"
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" rollback > "$TMP/diag-rollback.log"
-grep -q '^A09_DIAG_ROLLBACK_PASS:' "$TMP/diag-rollback.log"
-test "$before_diag" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_DIAG_CI_PASS: old adapter upgraded temporarily; missing Client-Id counted/denied; exact Caddy and adapter restored'
-sudo python3 "$ROOT/tools/ai/a09_same_host.py" rollback > "$TMP/rollback.log" 2>&1
-grep -q '^A09_P2_SAME_HOST_ROLLBACK_PASS:' "$TMP/rollback.log"
-test "$before_a04" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_P2_SAME_HOST_ROLLBACK_CI_PASS: exact A04 Caddy bytes restored, original containers unchanged'
-sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" stop > "$TMP/stop.log" 2>&1
-grep -q '^A09_P2_STOP_PASS:' "$TMP/stop.log"
-for n in s3-voice-a09-lite-adapter s3-voice-a09-lite-gateway; do
-  test "$(docker inspect -f '{{.State.Running}}' "$n")" = false
-done
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_P2_REAL_STOP_SIM_PASS: two new containers stopped; original services never restarted'
- "$TMP/edge-audit.log"
-grep -q '^A09_EDGE_LOCAL_VERDICT: PASS
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" arm > "$TMP/diag-arm.log" 2>&1 || {
-  tail -n 35 "$TMP/diag-arm.log" >&2
-  echo A09_DIAG_CI_ARM_FAILED >&2
-  exit 1
-}
-grep -q '^A09_DIAG_ARM_PASS:' "$TMP/diag-arm.log"
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-initial.log"
-grep -q '^A09_DIAG_VERDICT: NO_A09_OTA_REACHED' "$TMP/diag-initial.log"
-# Missing Client-Id must reach the NEW adapter, be counted, and fail HTTP 400.
-sudo python3 - "$STAGE/.env" <<'PY'
-import sys,urllib.request,urllib.error
-env=dict(line.split('=',1) for line in open(sys.argv[1]).read().splitlines())
-req=urllib.request.Request(
-    'http://127.0.0.1:18080/xiaozhi/ota/'+env['IOS_SECRET'],
-    data=b'{"application":{"version":"2.6.0"}}',
-    headers={'Device-Id':'02:01:02:03:04:77','Content-Type':'application/json'},
-    method='POST')
-try:
-    urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=8)
-    raise SystemExit('A09_DIAG_CI_MISSING_ID_NOT_REJECTED')
-except urllib.error.HTTPError as e:
-    assert e.code==400,e.code
-PY
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" report > "$TMP/diag-final.log"
-grep -q '^A09_DIAG_VERDICT: MISSING_REQUIRED_IDENTITY' "$TMP/diag-final.log"
-grep -q 'missing_client_id=1' "$TMP/diag-final.log"
-grep -q 'ota_seen=1' "$TMP/diag-final.log"
-sudo python3 "$ROOT/tools/ai/a09_diagnose.py" rollback > "$TMP/diag-rollback.log"
-grep -q '^A09_DIAG_ROLLBACK_PASS:' "$TMP/diag-rollback.log"
-test "$before_diag" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_DIAG_CI_PASS: old adapter upgraded temporarily; missing Client-Id counted/denied; exact Caddy and adapter restored'
-sudo python3 "$ROOT/tools/ai/a09_same_host.py" rollback > "$TMP/rollback.log" 2>&1
-grep -q '^A09_P2_SAME_HOST_ROLLBACK_PASS:' "$TMP/rollback.log"
-test "$before_a04" = "$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_P2_SAME_HOST_ROLLBACK_CI_PASS: exact A04 Caddy bytes restored, original containers unchanged'
-sudo bash "$ROOT/tools/ai/a09-lite-deploy.sh" stop > "$TMP/stop.log" 2>&1
-grep -q '^A09_P2_STOP_PASS:' "$TMP/stop.log"
-for n in s3-voice-a09-lite-adapter s3-voice-a09-lite-gateway; do
-  test "$(docker inspect -f '{{.State.Running}}' "$n")" = false
-done
-test "$before" = "$(for n in s3-voice-ai-server s3-voice-ai-gateway s3-voice-ai-tunnel; do docker inspect -f '{{.Id}}' "$n"; done)"
-echo 'A09_P2_REAL_STOP_SIM_PASS: two new containers stopped; original services never restarted'
- "$TMP/edge-audit.log"
-echo 'A09_EDGE_CI_PASS: real Caddy exact A09 route returns 400 for no-side-effect JSON array; no iPhone, no cloud API'
+grep -qx 'A09_EDGE_LOCAL_HTTP: 400' "$TMP/edge-audit.log"
+grep -qx 'A09_EDGE_LOCAL_VERDICT: PASS' "$TMP/edge-audit.log"
+echo 'A09_EDGE_CI_PASS: synthetic invalid OTA reaches actual Caddy route; no activation or Cloudflare modification'
 before_diag="$(sudo sha256sum /opt/s3-voice-ai-edge/Caddyfile | cut -d' ' -f1)"
 sudo python3 "$ROOT/tools/ai/a09_diagnose.py" arm > "$TMP/diag-arm.log" 2>&1 || {
   tail -n 35 "$TMP/diag-arm.log" >&2
