@@ -109,6 +109,7 @@ def ws(device=DEVICE, client=CLIENT, token='', route=None):
 assert http('/')[0]==403
 assert http('/health',method='GET')[0]==403
 assert http('/internal/authorize-ws',method='GET')[0]==403
+assert http('/internal/diagnostics',method='GET')[0]==403
 assert http('/xiaozhi/ota/invalidsecret')[0]==403
 status, body = http('/xiaozhi/ota/'+SECRET)
 assert status==200,(status,body)
