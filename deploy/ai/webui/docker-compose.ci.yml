@@ -1,0 +1,45 @@
+services:
+  auth:
+    image: python:3.13-alpine
+    working_dir: /project
+    volumes:
+      - ../../../:/project:ro
+    command: ["python3", "tools/ai/webui_auth.py", "serve"]
+    environment:
+      S3_WEBUI_BIND: "0.0.0.0"
+      S3_WEBUI_PORT: "19011"
+      S3_WEBUI_ORIGIN: "https://voice.example.test"
+      S3_WEBUI_OWNER_SECRET: "test-owner-8a1e739ae37e04bc8f53d183d10f35b1"
+      S3_WEBUI_GATE_SECRET: "test-gateway-d19d03c217adcdbccf101bf128a2201c"
+      S3_WEBUI_DEVICE_ID: "02:55:66:77:88:99"
+      S3_WEBUI_CLIENT_ID: "f1a2b3c4-a1b2-c3d4-e5f6-a1b2c3d4e5f6"
+      S3_WEBUI_UPSTREAM_OTA: "http://upstream:8003/xiaozhi/ota/"
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 96m
+    pids_limit: 100
+    restart: "no"
+  upstream:
+    image: python:3.13-alpine
+    working_dir: /project
+    volumes:
+      - ../../../:/project:ro
+    command: ["python3", "tests/ai/webui_fake_voice.py"]
+    read_only: true
+    mem_limit: 96m
+    restart: "no"
+  caddy:
+    image: caddy:2.11.1-alpine
+    volumes:
+      - ./Caddyfile.ci:/etc/caddy/Caddyfile:ro
+    environment:
+      S3_WEBUI_GATE_SECRET: "test-gateway-d19d03c217adcdbccf101bf128a2201c"
+    ports:
+      - "127.0.0.1:19191:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /data
+      - /config
+    mem_limit: 96m
+    restart: "no"
