@@ -32,9 +32,20 @@ async function openVoice() {
       audio: {echoCancellation:true,noiseSuppression:true,channelCount:1}
     });
     state.ctx = new AudioContext({sampleRate:16000,latencyHint:"interactive"});
-    state.codec = await createXiaozhiCodec();
     state.stream = await stream;
-    if (state.cancelled) return;
+    if (state.cancelled) {
+      state.stream.getTracks().forEach(track=>track.stop());
+      return;
+    }
+    state.codec = await createXiaozhiCodec();
+    if (state.cancelled) {
+      state.codec.free();
+      state.stream.getTracks().forEach(track=>track.stop());
+      return;
+    }
+    state.stream.getAudioTracks().forEach(track=>{
+      track.addEventListener("ended",()=>{status("麦克风已关闭");stopVoice(state);},{once:true});
+    });
     await state.ctx.resume();
     await state.ctx.audioWorklet.addModule("/webui/audio-worklet.js");
     state.processor = new AudioWorkletNode(state.ctx,"s3-voice-mic");
@@ -164,8 +175,12 @@ button?.addEventListener("click",async()=>{
   status("初始化麦克风和 Opus…");
   try {
     await openVoice();
-    button.textContent = "停止语音";
-    button.setAttribute("aria-pressed","true");
+    if (current && !current.cancelled) {
+      button.textContent = "停止语音";
+      button.setAttribute("aria-pressed","true");
+    } else {
+      button.textContent = "开始语音";
+    }
   } catch {
     status("语音启动失败：检查 HTTPS、麦克风权限和服务器");
     stopVoice();
