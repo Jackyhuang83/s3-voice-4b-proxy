@@ -54,6 +54,32 @@ class Ready(unittest.TestCase):
         self.assertNotIn("DO_NOT_PRINT_ME", str(result))
         self.assertEqual(1200000 // 1024, result["facts"]["available_mib"])
 
+    def test_manager_detection_no_running_manager_must_pass(self):
+        # Regression: P1-3 mistakenly used all(not Running), so an empty
+        # manager set incorrectly triggered A09_MANAGER_RESOURCE_ISOLATION_UNKNOWN.
+        with patch.object(p, "docker_inspect", return_value=None) as inspect:
+            self.assertFalse(p.a09_manager_active())
+            self.assertEqual(2, inspect.call_count)
+        with patch.object(p, "docker_inspect",
+                          return_value={"State": {"Running": False}}):
+            self.assertFalse(p.a09_manager_active())
+        info = passing()
+        info["manager_active"] = False
+        self.assertTrue(p.evaluate(info)["ok"])
+
+    def test_manager_detection_any_running_manager_must_block(self):
+        for running_name in ("xiaozhi-esp32-server-manager", "s3-voice-ai-manager"):
+            with self.subTest(running_name=running_name):
+                def fake_inspect(name):
+                    return {"State": {"Running": name == running_name}}
+                with patch.object(p, "docker_inspect", side_effect=fake_inspect):
+                    self.assertTrue(p.a09_manager_active())
+                info = passing()
+                info["manager_active"] = True
+                result = p.evaluate(info)
+                self.assertFalse(result["ok"])
+                self.assertIn("A09_MANAGER_RESOURCE_ISOLATION_UNKNOWN", result["failures"])
+
     def test_critical_gates_fail_closed(self):
         changes = [
             ("low mem", "mem", {"MemAvailable": 1090000, "SwapTotal": 0, "SwapFree": 0}, "RAM_AVAILABLE_BELOW_1_05GIB"),
