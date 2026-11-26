@@ -22,6 +22,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import urllib.parse
 import uuid
 
@@ -127,9 +128,10 @@ def resolve_image(tag):
     except ValueError:
         raise PilotBlocked("IMAGE_DIGEST_UNAVAILABLE")
     name = tag.split(":", 1)[0]
+    allowed_names = {name, "docker.io/library/" + name, "index.docker.io/library/" + name}
     found = [
         x for x in digests
-        if x.startswith(name + "@sha256:") and
+        if x.split("@sha256:", 1)[0] in allowed_names and
         re.fullmatch(r"[0-9a-f]{64}", x.partition("@sha256:")[2])
     ]
     if not found:
@@ -270,7 +272,16 @@ def verify(base=BASE):
         raise PilotBlocked("SWAP_DELTA_OVER_64MIB")
     if after["MemAvailable"] < 1101005:
         raise PilotBlocked("MEM_AVAILABLE_BELOW_1_05GIB")
-    owner_probe()
+    # Docker reports Started before Caddy has bound to 8080.
+    # Retry ONLY local new-sidecar probes; do not touch an old A04 listener.
+    for attempt in range(12):
+        try:
+            owner_probe()
+            break
+        except PilotBlocked:
+            if attempt == 11:
+                raise PilotBlocked("NEW_WEBUI_GATEWAY_NOT_READY")
+            time.sleep(0.75)
     # Same baseline tests, including A03 OTA and old A04 default deny.
     preflight()
     print("WEBUI_PILOT_VERIFY_PASS: new-sidecar-only, old A03/A04 container IDs unchanged")
