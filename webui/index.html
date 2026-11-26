@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0e1724">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'">
+  <title>S3-Voice</title>
+  <link rel="stylesheet" href="/webui/app.css">
+  <script defer src="/webui/app.js"></script>
+</head>
+<body>
+  <main class="layout">
+    <header class="topbar">
+      <div class="brand"><span class="spark">✦</span><span>S3-Voice</span></div>
+      <div class="header-side">
+        <span class="status" id="connectionStatus">未连接</span>
+        <button class="ghost" id="logoutBtn" hidden type="button">退出</button>
+      </div>
+    </header>
+
+    <section class="login" id="loginView" hidden aria-label="登录">
+      <div class="login-card">
+        <div class="logo-mark">✦</div>
+        <h1>你的私人 AI 助手</h1>
+        <p>通过自建服务器与 GPT / DeepSeek 交流。无需安装 iOS App。</p>
+        <form id="loginForm">
+          <label for="ownerPassword">访问密码</label>
+          <input id="ownerPassword" type="password" autocomplete="current-password" required minlength="1" placeholder="输入服务器访问密码">
+          <button type="submit" class="primary" id="loginBtn">安全登录</button>
+        </form>
+        <p id="loginError" class="error" role="alert"></p>
+      </div>
+    </section>
+
+    <section class="chat" id="chatView" hidden aria-label="文字聊天">
+      <div class="chat-head">
+        <div>
+          <p class="eyebrow">私人空间</p>
+          <h1>今天想聊些什么？</h1>
+        </div>
+        <div class="controls">
+          <label class="visually-hidden" for="modelSelect">模型</label>
+          <select id="modelSelect" aria-label="选择 AI 模型"></select>
+          <button class="ghost" id="newChatBtn" type="button">新对话</button>
+        </div>
+      </div>
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions text">
+        <div id="welcome" class="welcome">
+          <span class="welcome-icon">✦</span>
+          <h2>你好，有什么可以帮你？</h2>
+          <p>文字聊天现已提供，实时语音功能将在 P2 阶段接入。</p>
+        </div>
+      </div>
+      <form id="chatForm" class="composer">
+        <label class="visually-hidden" for="messageInput">输入聊天消息</label>
+        <textarea id="messageInput" rows="1" maxlength="2000" placeholder="向 AI 提问…" aria-label="输入聊天消息"></textarea>
+        <div class="composer-actions">
+          <span class="hint">Enter 发送 · Shift+Enter 换行</span>
+          <button id="sendBtn" type="submit" class="primary send" aria-label="发送消息">发送</button>
+        </div>
+      </form>
+      <p class="footer-hint">模型请求经你的 VPS 转发，可能产生文本 Token 费用。历史记录仅保存在本页内存中。</p>
+    </section>
+    <div id="appNotice" class="notice" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>
