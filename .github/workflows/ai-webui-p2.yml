@@ -11,6 +11,9 @@ on:
       - 'deploy/ai/webui/Caddyfile.isolated'
       - 'tests/ai/test_webui_opus.mjs'
       - 'docs/ai/P2-WEBUI-AUDIO.md'
+      - 'docs/ai/P1-WEBUI-PILOT.md'
+      - 'tools/ai/webui_pilot.py'
+      - 'tests/ai/test_webui_pilot*.py'
       - 'docs/ai/WEBUI-ROADMAP.md'
       - '.github/workflows/ai-webui-p2.yml'
   workflow_dispatch:
@@ -130,3 +133,55 @@ jobs:
           docker compose -f "$file" up -d --pull always
           python3 -m unittest discover -s tests/ai -p 'test_webui_isolated_gateway.py' -v
           echo "WEBUI_P2_CAPABILITIES_RUNTIME_PASS: Caddy real container booted under cap_drop ALL / cap_add NET_BIND_SERVICE"
+
+  pilot-source:
+    name: P1 Pilot new-only Python actions and interactive-Shell regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile and test approval, preflight, secrets and rollback
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/ai/webui_pilot.py tests/ai/test_webui_pilot.py tests/ai/test_webui_pilot_docker.py
+          python3 -m unittest discover -s tests/ai -p 'test_webui_pilot.py' -v
+      - name: Verify running pilot help does NOT exit interactive SSH parent
+        run: |
+          set -euo pipefail
+          # Isolated login shell is not a production SSH session.
+          result="$(bash -ic 'python3 tools/ai/webui_pilot.py --help >/dev/null; printf "SHELL_STILL_ALIVE\n"' 2>/dev/null)"
+          test "$result" = SHELL_STILL_ALIVE
+          echo "WEBUI_PILOT_SHELL_SURVIVAL_PASS: no parent shell exit"
+
+  pilot-docker:
+    name: P1 Pilot actual two-sidecar stage/verify/rollback (ephemeral synthetic legacy environment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker lifecycle test does not create an existing A03/A04 service
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e /opt/s3-voice-webui
+          cleanup() {
+            if sudo test -f /opt/s3-voice-webui/docker-compose.yml && sudo test -f /opt/s3-voice-webui/.env; then
+              sudo docker compose -p s3-voice-webui \
+                -f /opt/s3-voice-webui/docker-compose.yml \
+                --env-file /opt/s3-voice-webui/.env down >/dev/null 2>&1 || true
+            fi
+            docker network rm s3-voice-ai-edge_front s3-voice-ai_default >/dev/null 2>&1 || true
+            # Only a fresh disposable Runner path; never on the user's VPS.
+            sudo rm -rf /opt/s3-voice-webui
+          }
+          trap cleanup EXIT
+          docker network create s3-voice-ai_default >/dev/null
+          docker network create s3-voice-ai-edge_front >/dev/null
+          # Production CLI cannot use these mocks. Only the Python test
+          # explicitly injects synthetic preflight and original IDs.
+          sudo python3 -m unittest discover -s tests/ai -p 'test_webui_pilot_docker.py' -v
+          test -z "$(docker ps -a -q --filter 'name=^/s3-voice-webui-')"
+          echo "WEBUI_PILOT_FULL_LIFECYCLE_PASS: source, secrets, 2 real sidecars, localhost HTTP and rollback"
