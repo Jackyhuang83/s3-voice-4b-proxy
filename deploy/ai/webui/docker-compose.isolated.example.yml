@@ -1,0 +1,58 @@
+# WEBUI ISOLATED V1: two removable sidecars. NO changes to existing A04.
+# Plan only: do not up this example without the proven host gate, secrets,
+# pinned image digests, Cloudflare route plan and health/rollback evidence.
+name: s3-voice-webui
+services:
+  auth:
+    image: ${WEBUI_PYTHON_IMAGE:?provide immutable Python image digest}
+    container_name: s3-voice-webui-auth
+    working_dir: /project
+    command: ["python3", "-B", "tools/ai/webui_auth.py", "serve"]
+    read_only: true
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 96m
+    pids_limit: 80
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      S3_WEBUI_BIND: "0.0.0.0"
+      S3_WEBUI_PORT: "19011"
+      S3_WEBUI_UPSTREAM_OTA: "http://s3-voice-ai-server:8003/xiaozhi/ota/"
+      S3_WEBUI_MODELS_FILE: "/run/secrets/s3-webui-models.json"
+    env_file:
+      - /opt/s3-voice-webui/private/auth.env
+    volumes:
+      - /opt/s3-voice-webui/src:/project:ro
+      - /opt/s3-voice-webui/private/models.json:/run/secrets/s3-webui-models.json:ro
+    networks: [front, a03]
+  gateway:
+    image: ${WEBUI_CADDY_IMAGE:?provide immutable Caddy image digest}
+    container_name: s3-voice-webui-gateway
+    read_only: true
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 96m
+    pids_limit: 80
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file:
+      - /opt/s3-voice-webui/private/gateway.env
+    volumes:
+      - /opt/s3-voice-webui/src/deploy/ai/webui/Caddyfile.isolated:/etc/caddy/Caddyfile:ro
+    tmpfs:
+      - /tmp:rw,mode=1777
+      - /config:rw,mode=1777
+      - /data:rw,mode=1777
+    networks: [front, a03]
+    depends_on:
+      - auth
+    # Do not publish 8080; cloudflared already shares the 'front' network.
+networks:
+  front:
+    external: true
+    name: s3-voice-ai-edge_front
+  a03:
+    external: true
+    name: s3-voice-ai_default
