@@ -48,6 +48,17 @@ jobs:
           assert "#27" in baseline and "#28" in baseline and "#29" in baseline and "#30" in baseline
           print("WEBUI_P0_ROADMAP_PASS: 6 phases / 12 PR / 100 points; no paid audio API")
           print("WEBUI_P0_BASELINE_PASS: source files and known unfinished PRs tracked")
+          upstream = (root / "docs/ai/WEBUI-P0-UPSTREAM.md").read_text(encoding="utf-8")
+          for marker in (
+              "v0.9.8", "ota-connector.js", "websocket.js", "recorder.js",
+              "player.js", "stream-context.js", "listenMessageHandler.py",
+              "Live2D", "libopus.js", "tts.stop", "AudioWorklet",
+              "P1-1", "P1-2", "P2-1", "P2-2", "#30",
+          ):
+              assert marker in upstream, f"upstream acceptance audit missing: {marker}"
+          assert "不直接整体移植" in upstream, "missing minimal-reuse gate"
+          assert "不复制大型编译文件" in upstream, "missing binary provenance gate"
+          print("WEBUI_P0_UPSTREAM_PASS: pinned upstream, browser security, audio, license and text-only gates")
           PY
       - name: Verify P0 changes cannot modify product runtime or old CI
         if: github.event_name == 'pull_request'
