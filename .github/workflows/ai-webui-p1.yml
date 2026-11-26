@@ -57,7 +57,17 @@ jobs:
         run: |
           set -euo pipefail
           file=deploy/ai/webui/docker-compose.ci.yml
-          trap 'docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+          cleanup() {
+            code=$?
+            if test "$code" -ne 0; then
+              echo 'WEBUI_P1_DIAG: isolated container state after failure'
+              docker compose -f "$file" ps -a || true
+              docker compose -f "$file" logs --no-color --tail 35 caddy auth upstream || true
+            fi
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+            exit "$code"
+          }
+          trap cleanup EXIT
           docker compose -f "$file" up -d --pull always
           docker compose -f "$file" ps
           python3 -m unittest discover -s tests/ai -p 'test_webui_caddy.py' -v
