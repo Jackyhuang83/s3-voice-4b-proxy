@@ -44,12 +44,22 @@ jobs:
       - name: Fail on any unrelated change or production runtime mutation
         run: |
           set -euo pipefail
-          git diff --name-only HEAD^1 HEAD | while IFS= read -r path; do
-            case "$path" in
-              tools/ai/webui_preflight.py|tests/ai/test_webui_preflight.py|deploy/ai/webui/docker-compose.production.example.yml|docs/ai/P1-WEBUI-PREFLIGHT.md|docs/ai/WEBUI-ROADMAP.md|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
-              *) echo "WEBUI_P1_3_SCOPE_FAIL: $path"; exit 1;;
-            esac
-          done
+          changed="$(git diff --name-only HEAD^1 HEAD)"
+          if printf '%s\n' "$changed" | grep -Fxq 'deploy/ai/webui/Caddyfile.isolated'; then
+            printf '%s\n' "$changed" | while IFS= read -r path; do
+              case "$path" in
+                docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-ISOLATED.md|deploy/ai/webui/Caddyfile.isolated|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|tests/ai/test_webui_isolated_gateway.py|.github/workflows/ai-webui-isolated.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
+                *) echo "WEBUI_P1_3_SCOPE_FAIL: unrelated P1-R2 path $path"; exit 1;;
+              esac
+            done
+          else
+            printf '%s\n' "$changed" | while IFS= read -r path; do
+              case "$path" in
+                tools/ai/webui_preflight.py|tests/ai/test_webui_preflight.py|deploy/ai/webui/docker-compose.production.example.yml|docs/ai/P1-WEBUI-PREFLIGHT.md|docs/ai/WEBUI-ROADMAP.md|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
+                *) echo "WEBUI_P1_3_SCOPE_FAIL: $path"; exit 1;;
+              esac
+            done
+          fi
           echo "WEBUI_P1_3_SOURCE_PASS: no VPS install, no A03/A04/4B runtime edits"
 
   p1-caddy-compose-static:
