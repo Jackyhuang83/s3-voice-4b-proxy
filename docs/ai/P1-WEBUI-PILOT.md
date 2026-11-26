@@ -36,7 +36,7 @@
 - 固定官方 Caddy 2.11.7 + Python 3.13 Alpine 镜像实际 `RepoDigests`；不使用浮动生产 `latest`。vendor 的 libopus-wasm npm tarball 只在 staging 源码副本执行 SHA-256 校验，保留 MIT/BSD Notices。
 - `/opt/s3-voice-webui/src` 是新的只读挂载代码副本，网关以 uid1000 运行并仅保留 `NET_BIND_SERVICE` Capability；原 A04 的生产配置从不复制、覆盖或重载。
 - `rollback` 停止新项目 `s3-voice-webui`，**只删除其新容器，不删除私钥/源代码，不删除既有 Docker 外部网络**。如果实际 VPS 不是完全初始状态（目录或新容器同名已存在），自动 BLOCKED 而非覆盖。
-- 初始 `MemAvailable` 至少 1.05GiB；试点后不能低于该门槛，Swap 增量超过 64MiB，立即自动停止新增容器。P1 预检已 PASS 仍需要在 stage 当刻重新自动确认门槛；不再要求用户单独重复手工检查。
+- 初始 `MemAvailable` 至少 1.05GiB；**stage 启动后的自动验收**若低于该门槛或 Swap 增量超过 64MiB，立即回退两个新增容器。之后如管理员另行执行只读 `verify` 检测到资源超限，`verify` 只返回 BLOCKED，必须再执行 `rollback` 停止 WebUI；本版本没有后台持续监控，绝不虚称自动监控已经上线。P1 预检已 PASS，stage 会自行重新检查当时基线，不要求用户另跑一次相同命令。
 
 ### 下一步真实验收，不能由 GitHub Runner 替代
 
