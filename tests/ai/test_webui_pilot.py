@@ -152,9 +152,15 @@ class PilotSafety(unittest.TestCase):
         assert "docker compose -p s3-voice-ai" not in text
         assert "subprocess.Popen" not in text
         assert "ssh " not in text
-        assert "cloudflare" not in text.lower().split("def stage(",1)[1].split("def rollback(",1)[0].split("if __name__",1)[0] or \
-               "cloudflare" in text.lower(), "comment mentions cloudflare only"
-        self.assertEqual(pilot.main(["--help"]) if False else 0,0)
+        self.assertNotIn('exit "$rc"', text)
+        self.assertNotIn("docker system prune", text)
+        self.assertNotIn("docker container prune", text)
+        # argparse --help exits ONLY the child Python invocation, not SSH.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as result:
+            pilot.main(["--help"])
+        self.assertEqual(result.exception.code, 0)
+        self.assertIn("approve-isolated-stage", out.getvalue())
 
 
 if __name__=="__main__":
