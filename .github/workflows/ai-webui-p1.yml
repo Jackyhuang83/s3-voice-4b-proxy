@@ -1,0 +1,60 @@
+name: S3-Voice WebUI P1-1 isolated owner session and WS security
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/webui_auth.py'
+      - 'tests/ai/test_webui_auth.py'
+      - 'tests/ai/test_webui_caddy.py'
+      - 'tests/ai/webui_fake_voice.py'
+      - 'deploy/ai/webui/**'
+      - '.github/workflows/ai-webui-p1.yml'
+      - 'docs/ai/WEBUI-P1-SECURITY.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auth-stdlib:
+    name: P1-1 Python stdlib/session fail-closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python3 -m py_compile tools/ai/webui_auth.py tests/ai/test_webui_auth.py tests/ai/test_webui_caddy.py tests/ai/webui_fake_voice.py
+      - name: Verify owner login, cookie, Origin, Gateway and A03 token contracts
+        env:
+          PYTHONWARNINGS: error::ResourceWarning
+        run: python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+      - name: Audit scope - do not edit R1/R2, prior A03-A09 or old CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          git diff --name-only origin/main...HEAD | while IFS= read -r path; do
+            case "$path" in
+              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/WEBUI-P1-SECURITY.md) ;;
+              *) echo "WEBUI_P1_SCOPE_FAIL: $path"; exit 1;;
+            esac
+          done
+          echo 'WEBUI_P1_SCOPE_PASS: no original voice service, router firmware or production changed'
+  caddy-integration:
+    name: P1-1 official Caddy gateway upgrade/spoof tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Isolated official Caddy + Python auth + fake upstream (no public endpoints)
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=deploy/ai/webui/docker-compose.ci.yml
+          trap 'docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+          docker compose -f "$file" up -d --pull always
+          docker compose -f "$file" ps
+          python3 -m unittest discover -s tests/ai -p 'test_webui_caddy.py' -v
+          echo 'WEBUI_P1_EDGE_PASS: 101 approved / 403 denied, forged headers stripped, original OTA/WS absent'
