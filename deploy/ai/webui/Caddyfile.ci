@@ -1,0 +1,47 @@
+{
+    auto_https off
+    admin off
+}
+:8080 {
+    # This is a synthetic isolated route test only. Never deploy this whole
+    # Caddyfile over the existing production A04 gateway configuration.
+    @webui_api path /webui/api/*
+    handle @webui_api {
+        reverse_proxy auth:19011 {
+            header_up -Authorization
+            header_up -Device-Id
+            header_up -Client-Id
+        }
+    }
+
+    @webui_ws path /webui/ws
+    handle @webui_ws {
+        route {
+            # CRITICAL: remove attacker-controlled headers BEFORE forward_auth.
+            # See Caddy GHSA-7r4p-vjf4-gxv4 on copy_headers identity injection.
+            request_header -Authorization
+            request_header -Device-Id
+            request_header -Client-Id
+            request_header -X-S3-WS-Authorization
+            request_header -X-S3-WS-Device
+            request_header -X-S3-WS-Client
+            request_header -X-S3-Gateway-Secret
+
+            forward_auth auth:19011 {
+                uri /internal/ws-auth
+                header_up X-S3-Gateway-Secret {$S3_WEBUI_GATE_SECRET}
+                copy_headers X-S3-WS-Authorization>Authorization X-S3-WS-Device>Device-Id X-S3-WS-Client>Client-Id
+            }
+            rewrite * /xiaozhi/v1/
+            reverse_proxy upstream:8000 {
+                header_up -Cookie
+                header_up -Origin
+                header_up -X-S3-Gateway-Secret
+                header_up -X-S3-WS-Authorization
+                header_up -X-S3-WS-Device
+                header_up -X-S3-WS-Client
+            }
+        }
+    }
+    respond 404
+}
