@@ -11,7 +11,7 @@
         output discard
     }
 
-    @webui_pages path /webui /webui/ /webui/app.css /webui/app.js /webui/api/*
+    @webui_pages path /webui /webui/ /webui/app.css /webui/app.js /webui/audio-ui.mjs /webui/audio-opus.mjs /webui/audio-worklet.js /webui/vendor/libopus/dist/index.js /webui/vendor/libopus/dist/generated/libopus.generated.mjs /webui/api/*
     handle @webui_pages {
         reverse_proxy s3-voice-webui-auth:19011 {
             header_up -Authorization
