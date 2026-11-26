@@ -55,7 +55,7 @@ jobs:
               assert service["read_only"]
               assert service["restart"]=="no"
               assert service["cap_drop"]==["ALL"]
-              assert set(service["networks"])=={"a03","front"}
+              assert set(service["networks"])==({"a03"} if name=="auth" else {"a03","front"})
               assert "@sha256:" in service["image"]
           auth=c["services"]["auth"]
           gateway=c["services"]["gateway"]
