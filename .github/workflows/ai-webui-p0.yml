@@ -77,7 +77,7 @@ jobs:
               esac
             done
             echo "WEBUI_P2_SCOPE_PASS: 2.1 source and cross-phase CI only"
-          elif if printf '%s\n' "$changed" | grep -Fxq 'tools/ai/webui_preflight.py'; then
+          elif printf '%s\n' "$changed" | grep -Fxq 'tools/ai/webui_preflight.py'; then
             printf '%s\n' "$changed" | while IFS= read -r path; do
               case "$path" in
                 docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-PREFLIGHT.md|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml|tools/ai/webui_preflight.py|tests/ai/test_webui_preflight.py|deploy/ai/webui/docker-compose.production.example.yml) ;;
