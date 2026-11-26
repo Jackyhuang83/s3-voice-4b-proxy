@@ -35,9 +35,12 @@ ORIGINAL = ("s3-voice-ai-server", "s3-voice-ai-gateway", "s3-voice-ai-tunnel")
 COMPOSE_SOURCE = ROOT / "deploy/ai/webui/docker-compose.isolated.example.yml"
 PRIVATE_FILES = ("auth.env", "gateway.env", "models.json")
 SOURCE_FILES = (
+    "tools/ai/webui_pilot.py",
+    "tools/ai/webui_preflight.py",
     "tools/ai/webui_auth.py",
     "tools/ai/webui_text.py",
     "tools/ai/webui-vendor-opus.sh",
+    "deploy/ai/webui/docker-compose.isolated.example.yml",
     "deploy/ai/webui/Caddyfile.isolated",
     "webui/index.html",
     "webui/app.css",
