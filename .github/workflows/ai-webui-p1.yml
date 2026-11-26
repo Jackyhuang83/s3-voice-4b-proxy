@@ -1,0 +1,107 @@
+name: S3-Voice WebUI P1-1 isolated owner session and WS security
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/webui_auth.py'
+      - 'tests/ai/test_webui_auth.py'
+      - 'tests/ai/test_webui_caddy.py'
+      - 'tests/ai/test_webui_official.py'
+      - 'tests/ai/webui_fake_voice.py'
+      - 'deploy/ai/webui/**'
+      - '.github/workflows/ai-webui-p1.yml'
+      - 'docs/ai/P1-WEBUI-SECURITY.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auth-stdlib:
+    name: P1-1 Python stdlib/session fail-closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python3 -m py_compile tools/ai/webui_auth.py tests/ai/test_webui_auth.py tests/ai/test_webui_caddy.py tests/ai/test_webui_official.py tests/ai/webui_fake_voice.py
+      - name: Verify owner login, cookie, Origin, Gateway and A03 token contracts
+        env:
+          PYTHONWARNINGS: error::ResourceWarning
+        run: python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+      - name: Require Caddy CI image matches existing A04 patched release
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          a04 = pathlib.Path("tools/ai/a04-edge.sh").read_text()
+          compose = pathlib.Path("deploy/ai/webui/docker-compose.ci.yml").read_text()
+          version = re.search(r"^CADDY_TAG=(caddy:\d+\.\d+\.\d+-alpine)$", a04, flags=re.M)
+          assert version, "A04 official Caddy pin missing"
+          assert f"image: {version.group(1)}" in compose, "WebUI CI must use the A04 patched Caddy version"
+          numbers = tuple(int(x) for x in re.findall(r"\d+", version.group(1).split(":")[1])[:3])
+          assert numbers >= (2,11,2), "Caddy CVE-2026-30851 vulnerable release"
+          print("WEBUI_P1_CADDY_VERSION_PASS: matches patched A04 release")
+          PY
+      - name: Audit scope - do not edit R1/R2, prior A03-A09 or old CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          # pull_request checks out GitHub's synthetic merge commit; first parent is main.
+          # Do not fetch shallow history or rely on potentially missing merge-base.
+          git diff --name-only HEAD^1 HEAD | while IFS= read -r path; do
+            case "$path" in
+              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/test_webui_official.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/P1-WEBUI-SECURITY.md) ;;
+              *) echo "WEBUI_P1_SCOPE_FAIL: $path"; exit 1;;
+            esac
+          done
+          echo 'WEBUI_P1_SCOPE_PASS: no original voice service, router firmware or production changed'
+  caddy-integration:
+    name: P1-1 official Caddy gateway upgrade/spoof tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Isolated official Caddy + Python auth + fake upstream (no public endpoints)
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=deploy/ai/webui/docker-compose.ci.yml
+          cleanup() {
+            code=$?
+            if test "$code" -ne 0; then
+              echo 'WEBUI_P1_DIAG: isolated container state after failure'
+              docker compose -f "$file" ps -a || true
+              docker compose -f "$file" logs --no-color --tail 35 caddy auth upstream || true
+            fi
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+            exit "$code"
+          }
+          trap cleanup EXIT
+          docker compose -f "$file" up -d --pull always
+          docker compose -f "$file" ps
+          python3 -m unittest discover -s tests/ai -p 'test_webui_caddy.py' -v
+          echo 'WEBUI_P1_EDGE_PASS: 101 approved / 403 denied, forged headers stripped, original OTA/WS absent'
+  official-a03:
+    name: P1-1 pinned XiaoZhi v0.9.8 signed OTA and WS 101
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Boot pinned upstream official server on temporary runner
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Verify real HMAC token from A03 and official WS upgrade
+        run: python3 -m unittest discover -s tests/ai -p 'test_webui_official.py' -v
+      - name: Clean up only isolated official server
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback
+          fi

@@ -1,0 +1,41 @@
+# P1-1 proposed additive Caddy route fragment; NOT automatic installer.
+# Render only into a separately verified A04 Caddyfile after read-only
+# host/identity/memory checks and backup. Do NOT overwrite original 4B routes.
+# These 'handle' blocks belong INSIDE the existing A04 site block, before its
+# default deny. They must not replace original '@ota' or '@ws' routes.
+@webui_api path /webui/api/*
+handle @webui_api {
+    reverse_proxy s3-voice-webui-auth:19011 {
+        header_up -Authorization
+        header_up -Device-Id
+        header_up -Client-Id
+    }
+}
+@webui_ws path /webui/ws
+handle @webui_ws {
+    route {
+        # Protect against client-supplied trusted header fallback in
+        # vulnerable Caddy forward_auth copy_headers implementations.
+        request_header -Authorization
+        request_header -Device-Id
+        request_header -Client-Id
+        request_header -X-S3-WS-Authorization
+        request_header -X-S3-WS-Device
+        request_header -X-S3-WS-Client
+        request_header -X-S3-Gateway-Secret
+        forward_auth s3-voice-webui-auth:19011 {
+            uri /internal/ws-auth
+            header_up X-S3-Gateway-Secret {$S3_WEBUI_GATE_SECRET}
+            copy_headers X-S3-WS-Authorization>Authorization X-S3-WS-Device>Device-Id X-S3-WS-Client>Client-Id
+        }
+        rewrite * /xiaozhi/v1/
+        reverse_proxy s3-voice-ai-server:8000 {
+            header_up -Cookie
+            header_up -Origin
+            header_up -X-S3-Gateway-Secret
+            header_up -X-S3-WS-Authorization
+            header_up -X-S3-WS-Device
+            header_up -X-S3-WS-Client
+        }
+    }
+}
