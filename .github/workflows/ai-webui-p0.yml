@@ -80,7 +80,7 @@ jobs:
           elif printf '%s\n' "$changed" | grep -Fxq 'deploy/ai/webui/Caddyfile.isolated'; then
             printf '%s\n' "$changed" | while IFS= read -r path; do
               case "$path" in
-                docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-ISOLATED.md|deploy/ai/webui/Caddyfile.isolated|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|tests/ai/test_webui_isolated_gateway.py|.github/workflows/ai-webui-isolated.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
+                docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-ISOLATED.md|deploy/ai/webui/Caddyfile.isolated|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|tests/ai/test_webui_isolated_gateway.py|.github/workflows/ai-webui-isolated.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml|.github/workflows/ai-webui-p1.yml|.github/workflows/ai-webui-p1-text.yml) ;;
                 *) echo "WEBUI_P0_SCOPE_FAIL: P1-3-R2 unexpected path $path"; exit 1 ;;
               esac
             done
