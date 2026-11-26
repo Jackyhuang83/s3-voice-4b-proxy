@@ -1,0 +1,89 @@
+name: S3-Voice WebUI P1-2 private text/SSE chat
+on:
+  pull_request:
+    paths:
+      - 'webui/**'
+      - 'tools/ai/webui_auth.py'
+      - 'tools/ai/webui_text.py'
+      - 'tests/ai/test_webui_text.py'
+      - 'deploy/ai/webui/**'
+      - 'docs/ai/P1-WEBUI-TEXT.md'
+      - '.github/workflows/ai-webui-p1-text.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p1-text-only:
+    name: P1-2 20-turn mock SSE and owner auth contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile stdlib Python and check browser script syntax
+        run: |
+          python3 -m py_compile tools/ai/webui_auth.py tools/ai/webui_text.py tests/ai/test_webui_text.py
+          node --check webui/app.js
+      - name: Run 20 mock GPT/DeepSeek streams + security tests with no real API keys
+        env:
+          PYTHONWARNINGS: error::ResourceWarning
+        run: |
+          python3 -m unittest discover -s tests/ai -p 'test_webui_text.py' -v
+          python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+      - name: Enforce narrow P1-2 scope (no existing A03/A04 or proxy source edits)
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD | while IFS= read -r name; do
+            case "$name" in
+              webui/*|tools/ai/webui_auth.py|tools/ai/webui_text.py|tests/ai/test_webui_text.py|deploy/ai/webui/*|docs/ai/P1-WEBUI-TEXT.md|.github/workflows/ai-webui-p1-text.yml) ;;
+              *) echo "WEBUI_P1_TEXT_SCOPE_FAIL: $name"; exit 1;;
+            esac
+          done
+          echo 'WEBUI_P1_TEXT_SCOPE_PASS: only WebUI, tests and additive routes'
+  p1-real-caddy-ui:
+    name: P1-2 patched Caddy serves text site / keeps private models
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Start existing P1-1 isolated Caddy, fake A03 and auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=deploy/ai/webui/docker-compose.ci.yml
+          cleanup() {
+            ret=$?
+            if [ "$ret" -ne 0 ]; then
+              docker compose -f "$file" ps -a || true
+              docker compose -f "$file" logs --no-color --tail 30 caddy auth upstream || true
+            fi
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+            exit "$ret"
+          }
+          trap cleanup EXIT
+          docker compose -f "$file" up -d --pull always
+          python3 -m unittest discover -s tests/ai -p 'test_webui_caddy.py' -v
+          python3 - <<'PY'
+          import json, urllib.error, urllib.request
+          root="http://127.0.0.1:19191"
+          for path,mime in (("/webui/","text/html"),("/webui/app.css","text/css"),("/webui/app.js","text/javascript")):
+              with urllib.request.urlopen(root+path,timeout=5) as r:
+                  data=r.read()
+                  assert r.status == 200 and mime in r.headers.get("Content-Type","")
+                  assert "default-src 'none'" in r.headers.get("Content-Security-Policy","")
+                  assert data and b"webui" in data.lower()
+          try:
+              urllib.request.urlopen(root+"/webui/api/models",timeout=5)
+          except urllib.error.HTTPError as e:
+              assert e.code == 401
+          else:
+              raise AssertionError("model catalog readable without owner session")
+          print("WEBUI_P1_TEXT_CADDY_PASS: static assets CSP, private model catalog, old WS 101/403 regression")
+          PY
