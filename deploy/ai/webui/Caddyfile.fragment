@@ -3,7 +3,7 @@
 # host/identity/memory checks and backup. Do NOT overwrite original 4B routes.
 # These 'handle' blocks belong INSIDE the existing A04 site block, before its
 # default deny. They must not replace original '@ota' or '@ws' routes.
-@webui_api path /webui/api/*
+@webui_api path /webui/api/* /webui /webui/ /webui/app.js /webui/app.css
 handle @webui_api {
     reverse_proxy s3-voice-webui-auth:19011 {
         header_up -Authorization
