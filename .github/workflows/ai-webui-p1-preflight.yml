@@ -72,7 +72,13 @@ jobs:
           a=d["services"]["auth"]
           assert not a.get("ports"),"must not publish any host port"
           assert a["read_only"] and a["restart"]=="no"
-          assert a["mem_limit"]<=96*1024*1024
+          def mem_bytes(x):
+              if isinstance(x, (int, float)): return int(x)
+              x=str(x).strip().lower()
+              if x.endswith("m"): return int(x[:-1])*1024*1024
+              if x.endswith("g"): return int(x[:-1])*1024*1024*1024
+              return int(x)
+          assert mem_bytes(a["mem_limit"])<=96*1024*1024
           assert a.get("network_mode") not in ("host",)
           assert a["cap_drop"]==["ALL"]
           assert set(a["networks"])=={"a03","front"}
