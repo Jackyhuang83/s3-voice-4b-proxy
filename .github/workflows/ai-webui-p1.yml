@@ -5,6 +5,7 @@ on:
       - 'tools/ai/webui_auth.py'
       - 'tests/ai/test_webui_auth.py'
       - 'tests/ai/test_webui_caddy.py'
+      - 'tests/ai/test_webui_official.py'
       - 'tests/ai/webui_fake_voice.py'
       - 'deploy/ai/webui/**'
       - '.github/workflows/ai-webui-p1.yml'
@@ -24,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - run: python3 -m py_compile tools/ai/webui_auth.py tests/ai/test_webui_auth.py tests/ai/test_webui_caddy.py tests/ai/webui_fake_voice.py
+      - run: python3 -m py_compile tools/ai/webui_auth.py tests/ai/test_webui_auth.py tests/ai/test_webui_caddy.py tests/ai/test_webui_official.py tests/ai/webui_fake_voice.py
       - name: Verify owner login, cookie, Origin, Gateway and A03 token contracts
         env:
           PYTHONWARNINGS: error::ResourceWarning
@@ -36,7 +37,7 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           git diff --name-only origin/main...HEAD | while IFS= read -r path; do
             case "$path" in
-              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/P1-WEBUI-SECURITY.md) ;;
+              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/test_webui_official.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/P1-WEBUI-SECURITY.md) ;;
               *) echo "WEBUI_P1_SCOPE_FAIL: $path"; exit 1;;
             esac
           done
@@ -60,3 +61,22 @@ jobs:
           docker compose -f "$file" ps
           python3 -m unittest discover -s tests/ai -p 'test_webui_caddy.py' -v
           echo 'WEBUI_P1_EDGE_PASS: 101 approved / 403 denied, forged headers stripped, original OTA/WS absent'
+  official-a03:
+    name: P1-1 pinned XiaoZhi v0.9.8 signed OTA and WS 101
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Boot pinned upstream official server on temporary runner
+        run: sudo bash tools/ai/a03-server.sh install
+      - name: Verify real HMAC token from A03 and official WS upgrade
+        run: python3 -m unittest discover -s tests/ai -p 'test_webui_official.py' -v
+      - name: Clean up only isolated official server
+        if: always()
+        run: |
+          if test -f /opt/s3-voice-ai/.env; then
+            sudo bash tools/ai/a03-server.sh rollback
+          fi
