@@ -29,7 +29,7 @@ services:
     mem_limit: 96m
     restart: "no"
   caddy:
-    image: caddy:2.11.1-alpine
+    image: caddy:2.11.7-alpine
     volumes:
       - ./Caddyfile.ci:/etc/caddy/Caddyfile:ro
     environment:
