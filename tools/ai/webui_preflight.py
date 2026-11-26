@@ -155,6 +155,18 @@ def evaluate(info):
     }
 
 
+def a09_manager_active():
+    """True only when at least one known A09 Manager is currently running.
+
+    Original P1-3 code used all(not running), which inverted this boolean
+    and incorrectly BLOCKED healthy systems with both Managers stopped.
+    """
+    return any(
+        bool((docker_inspect(name) or {}).get("State", {}).get("Running", False))
+        for name in ("xiaozhi-esp32-server-manager", "s3-voice-ai-manager")
+    )
+
+
 def gather():
     try:
         mem = proc_meminfo(pathlib.Path("/proc/meminfo").read_text())
@@ -182,10 +194,7 @@ def gather():
         "a03": docker_inspect(REQUIRED_CONTAINERS[0]),
         "a04": docker_inspect(REQUIRED_CONTAINERS[1]),
         "a04_fingerprint": config[0] if config else "unavailable",
-        "manager_active": all(
-            not (docker_inspect(name) or {}).get("State", {}).get("Running", False)
-            for name in ("xiaozhi-esp32-server-manager", "s3-voice-ai-manager")
-        )
+        "manager_active": a09_manager_active()
     }
 
 
