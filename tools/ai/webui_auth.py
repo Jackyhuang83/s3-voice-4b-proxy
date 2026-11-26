@@ -20,6 +20,14 @@ import urllib.request
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+import importlib.util
+from pathlib import Path
+
+# Load sibling text-only helper by its exact trusted path, so tests importing
+# this script with importlib behave exactly like the live stdlib container.
+_text_spec = importlib.util.spec_from_file_location("s3_webui_text", Path(__file__).with_name("webui_text.py"))
+webui_text = importlib.util.module_from_spec(_text_spec)
+_text_spec.loader.exec_module(webui_text)
 
 COOKIE_NAME = "__Host-s3voice"
 MAX_BODY = 4096
@@ -60,6 +68,7 @@ class Config:
         self.port = int(env.get("S3_WEBUI_PORT", "19011"))
         if not 1 <= self.port <= 65535:
             raise ValueError("invalid port")
+        self.models = webui_text.read_catalog(env)
 
 
 class State:
@@ -109,7 +118,7 @@ class State:
 
 
 class AuthHandler(BaseHTTPRequestHandler):
-    server_version = "S3VoiceWebui/0.1"
+    server_version = "S3VoiceWebui/0.2"
     sys_version = ""
 
     def log_message(self, *_):
@@ -150,6 +159,10 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.respond(200, {"authenticated": self.server.state.active(self.cookie())})
         elif self.path == "/internal/ws-auth":
             self.ws_auth()
+        elif self.path == "/webui/api/models":
+            webui_text.visible_models(self)
+        elif self.path in webui_text.FILES or self.path == "/webui":
+            webui_text.serve_static(self)
         else:
             self.deny(404)
 
@@ -181,6 +194,8 @@ class AuthHandler(BaseHTTPRequestHandler):
         elif self.path == "/webui/api/logout":
             self.server.state.revoke(self.cookie())
             self.respond(200, {"authenticated": False}, [("Set-Cookie", f"{COOKIE_NAME}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0")])
+        elif self.path == "/webui/api/chat":
+            webui_text.forward_text(self)
         else:
             self.deny(404)
 
