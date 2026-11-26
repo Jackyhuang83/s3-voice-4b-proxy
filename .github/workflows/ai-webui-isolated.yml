@@ -59,11 +59,17 @@ jobs:
               assert "@sha256:" in service["image"]
           auth=c["services"]["auth"]
           gateway=c["services"]["gateway"]
-          assert "auth.env" in " ".join(auth["env_file"])
-          assert "gateway.env" in " ".join(gateway["env_file"])
-          assert "auth.env" not in " ".join(gateway["env_file"])
-          assert "gateway.env" not in " ".join(auth["env_file"])
+          # docker compose config commonly resolves env_file into environment
+          # and removes env_file from canonical JSON. Verify actual isolation.
+          auth_env=auth.get("environment",{})
+          gateway_env=gateway.get("environment",{})
+          assert "S3_WEBUI_OWNER_SECRET" in auth_env
+          assert "S3_WEBUI_OWNER_SECRET" not in gateway_env
+          assert "S3_WEBUI_GATE_SECRET" in auth_env
+          assert "S3_WEBUI_GATE_SECRET" in gateway_env
+          assert "S3_WEBUI_MODELS_FILE" not in gateway_env
           assert any("models.json" in item.get("source","") for item in auth["volumes"])
+          assert not any("models.json" in item.get("source","") for item in gateway.get("volumes",[]))
           print("WEBUI_ISOLATED_COMPOSE_PASS: 2 digest-pinned read-only sidecars; old A04 is not a service")
           PY
   p1-isolated-two-caddy:
