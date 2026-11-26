@@ -1,0 +1,62 @@
+{
+    auto_https off
+    admin off
+}
+
+# NEW dedicated WebUI gateway, not a fragment of the existing A04 Caddy.
+# This config must ONLY run in the s3-voice-webui-gateway container.
+# No request path logging: existing A04 private device route stays untouched.
+:8080 {
+    log {
+        output discard
+    }
+
+    @webui_pages path /webui /webui/ /webui/app.css /webui/app.js /webui/api/*
+    handle @webui_pages {
+        reverse_proxy s3-voice-webui-auth:19011 {
+            header_up -Authorization
+            header_up -Device-Id
+            header_up -Client-Id
+            header_up -X-S3-Gateway-Secret
+            header_up -X-S3-WS-Authorization
+            header_up -X-S3-WS-Device
+            header_up -X-S3-WS-Client
+        }
+    }
+
+    @webui_ws {
+        method GET
+        path /webui/ws
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    handle @webui_ws {
+        route {
+            request_header -Authorization
+            request_header -Device-Id
+            request_header -Client-Id
+            request_header -X-S3-WS-Authorization
+            request_header -X-S3-WS-Device
+            request_header -X-S3-WS-Client
+            request_header -X-S3-Gateway-Secret
+            forward_auth s3-voice-webui-auth:19011 {
+                uri /internal/ws-auth
+                header_up X-S3-Gateway-Secret {$S3_WEBUI_GATE_SECRET}
+                copy_headers X-S3-WS-Authorization>Authorization X-S3-WS-Device>Device-Id X-S3-WS-Client>Client-Id
+            }
+            rewrite * /xiaozhi/v1/
+            reverse_proxy s3-voice-ai-server:8000 {
+                header_up -Cookie
+                header_up -Origin
+                header_up -X-S3-Gateway-Secret
+                header_up -X-S3-WS-Authorization
+                header_up -X-S3-WS-Device
+                header_up -X-S3-WS-Client
+            }
+        }
+    }
+
+    handle {
+        respond "Forbidden" 403
+    }
+}
