@@ -30,6 +30,20 @@ jobs:
         env:
           PYTHONWARNINGS: error::ResourceWarning
         run: python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+      - name: Require Caddy CI image matches existing A04 patched release
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          a04 = pathlib.Path("tools/ai/a04-edge.sh").read_text()
+          compose = pathlib.Path("deploy/ai/webui/docker-compose.ci.yml").read_text()
+          version = re.search(r"^CADDY_TAG=(caddy:\d+\.\d+\.\d+-alpine)$", a04, flags=re.M)
+          assert version, "A04 official Caddy pin missing"
+          assert f"image: {version.group(1)}" in compose, "WebUI CI must use the A04 patched Caddy version"
+          numbers = tuple(int(x) for x in re.findall(r"\d+", version.group(1).split(":")[1])[:3])
+          assert numbers >= (2,11,2), "Caddy CVE-2026-30851 vulnerable release"
+          print("WEBUI_P1_CADDY_VERSION_PASS: matches patched A04 release")
+          PY
       - name: Audit scope - do not edit R1/R2, prior A03-A09 or old CI
         shell: bash
         run: |
