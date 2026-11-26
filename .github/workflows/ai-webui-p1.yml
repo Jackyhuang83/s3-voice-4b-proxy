@@ -8,7 +8,7 @@ on:
       - 'tests/ai/webui_fake_voice.py'
       - 'deploy/ai/webui/**'
       - '.github/workflows/ai-webui-p1.yml'
-      - 'docs/ai/WEBUI-P1-SECURITY.md'
+      - 'docs/ai/P1-WEBUI-SECURITY.md'
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -34,7 +36,7 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           git diff --name-only origin/main...HEAD | while IFS= read -r path; do
             case "$path" in
-              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/WEBUI-P1-SECURITY.md) ;;
+              tools/ai/webui_auth.py|tests/ai/test_webui_auth.py|tests/ai/test_webui_caddy.py|tests/ai/webui_fake_voice.py|deploy/ai/webui/*|.github/workflows/ai-webui-p1.yml|docs/ai/P1-WEBUI-SECURITY.md) ;;
               *) echo "WEBUI_P1_SCOPE_FAIL: $path"; exit 1;;
             esac
           done
