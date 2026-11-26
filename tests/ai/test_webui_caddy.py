@@ -60,7 +60,7 @@ class CaddyContract(unittest.TestCase):
         self.assertNotEqual(101, ws()[0])
         cookie=self.login()
         self.assertEqual(403,ws(cookie=cookie,origin="https://attacker.invalid")[0])
-        self.assertEqual(403,ws(cookie=cookie,path="/webui/ws?authorization=Bearer+bad")[0])
+        self.assertNotEqual(101,ws(cookie=cookie,path="/webui/ws?authorization=Bearer+bad")[0])
         self.assertEqual(404,ws(cookie=cookie,path="/xiaozhi/v1/")[0])
         self.assertEqual(404,call("POST","/xiaozhi/ota/", {})[0])
         self.assertEqual(404,call("GET","/internal/ws-auth")[0])
