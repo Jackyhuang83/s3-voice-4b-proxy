@@ -1,0 +1,115 @@
+name: S3-Voice WebUI P1-3 read-only VPS and Docker deployment gate
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/webui_preflight.py'
+      - 'tests/ai/test_webui_preflight.py'
+      - 'deploy/ai/webui/docker-compose.production.example.yml'
+      - 'docs/ai/P1-WEBUI-PREFLIGHT.md'
+      - 'docs/ai/WEBUI-ROADMAP.md'
+      - '.github/workflows/ai-webui-p0.yml'
+      - '.github/workflows/ai-webui-p1-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p1-preflight-stdlib:
+    name: P1-3 offline resource/route/permission gates and 13-PR plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile and run pure fixture-based preflight tests
+        run: |
+          python3 -m py_compile tools/ai/webui_preflight.py tests/ai/test_webui_preflight.py
+          python3 -m unittest discover -s tests/ai -p 'test_webui_preflight.py' -v
+      - name: Confirm planned P0-P5 PR weights and 100 points
+        run: |
+          python3 - <<'PY'
+          import pathlib,re
+          s=pathlib.Path("docs/ai/WEBUI-ROADMAP.md").read_text()
+          pr=re.findall(r'^\| P([0-5]) [^|]+\|\s*(?:\d+)?\s*\|\s*P[0-5]-[123][^|]*\|\s*(\d+)\s*\|',s,re.M)
+          assert len(pr)==13,pr
+          assert sum(int(w) for _,w in pr)==100,pr
+          assert sum(1 for stage,_ in pr if stage=="1")==3
+          assert sum(int(w) for stage,w in pr if stage=="1")==20
+          assert all(sum(1 for s,_ in pr if s==str(stage))<=5 for stage in range(6))
+          print("WEBUI_P1_3_ROADMAP_PASS: 6 stages, 13 PRs, 100 points, P1 8+8+4")
+          PY
+      - name: Fail on any unrelated change or production runtime mutation
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD | while IFS= read -r path; do
+            case "$path" in
+              tools/ai/webui_preflight.py|tests/ai/test_webui_preflight.py|deploy/ai/webui/docker-compose.production.example.yml|docs/ai/P1-WEBUI-PREFLIGHT.md|docs/ai/WEBUI-ROADMAP.md|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
+              *) echo "WEBUI_P1_3_SCOPE_FAIL: $path"; exit 1;;
+            esac
+          done
+          echo "WEBUI_P1_3_SOURCE_PASS: no VPS install, no A03/A04/4B runtime edits"
+
+  p1-caddy-compose-static:
+    name: P1-3 real Caddy adaptation and sidecar network-only Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate optional production layout with synthetic values only
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/s3-voice-webui/private
+          printf 'S3_WEBUI_ORIGIN=https://voice.example.test\nS3_WEBUI_OWNER_SECRET=FAKE_CI_OWNER_CREDENTIAL_0123456789abcdef\nS3_WEBUI_GATE_SECRET=FAKE_CI_GATE_CREDENTIAL_0123456789abcdef\nS3_WEBUI_DEVICE_ID=02:11:22:33:44:55\nS3_WEBUI_CLIENT_ID=11111111-2222-4333-8444-555555555555\n' | sudo tee /opt/s3-voice-webui/private/service.env >/dev/null
+          export WEBUI_PYTHON_IMAGE="python:3.13-alpine@sha256:$(printf 'a%.0s' {1..64})"
+          docker compose -f deploy/ai/webui/docker-compose.production.example.yml config --format json > /tmp/webui-prod-layout.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/webui-prod-layout.json"))
+          assert len(d["services"])==1
+          a=d["services"]["auth"]
+          assert not a.get("ports"),"must not publish any host port"
+          assert a["read_only"] and a["restart"]=="no"
+          def mem_bytes(x):
+              if isinstance(x, (int, float)): return int(x)
+              x=str(x).strip().lower()
+              if x.endswith("m"): return int(x[:-1])*1024*1024
+              if x.endswith("g"): return int(x[:-1])*1024*1024*1024
+              return int(x)
+          assert mem_bytes(a["mem_limit"])<=96*1024*1024
+          assert a.get("network_mode") not in ("host",)
+          assert a["cap_drop"]==["ALL"]
+          assert set(a["networks"])=={"a03","front"}
+          assert set(d["networks"])=={"a03","front"}
+          assert all(n.get("external") for n in d["networks"].values())
+          assert "@sha256:" in a["image"]
+          print("WEBUI_P1_PROD_COMPOSE_PASS: 1 digest-pinned sidecar, external networks, no host ports")
+          PY
+      - name: Adapt combined original A04 + WebUI Caddyfile without user secrets
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path("deploy/ai/a04/Caddyfile.in").read_text()
+          extension=Path("deploy/ai/webui/Caddyfile.fragment").read_text()
+          boundary='  handle {\n    respond "Forbidden" 403\n  }\n'
+          assert src.count(boundary)==1, "original A04 deny boundary changed"
+          assert "/xiaozhi/ota/__PAIR_SECRET__" in src and "/xiaozhi/v1/__PAIR_SECRET__" in src
+          assert "path /webui/ws" in extension and "X-S3-Gateway-Secret" in extension
+          merged=src.replace(boundary,extension+"\n"+boundary)
+          assert merged.count("/xiaozhi/ota/__PAIR_SECRET__")==1
+          assert merged.count("/xiaozhi/v1/__PAIR_SECRET__")==1
+          Path("/tmp/webui-merged-Caddyfile").write_text(merged)
+          PY
+          docker run --rm -e S3_WEBUI_GATE_SECRET=FAKE_TEST_GATEWAY_NOT_REAL \
+            -v /tmp/webui-merged-Caddyfile:/etc/caddy/Caddyfile:ro \
+            caddy:2.11.7-alpine caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty > /tmp/webui-adapted.json
+          python3 - <<'PY'
+          import json
+          s=json.dumps(json.load(open("/tmp/webui-adapted.json")))
+          for required in ("/webui/ws","/webui/api/*","/xiaozhi/ota/__PAIR_SECRET__","/xiaozhi/v1/__PAIR_SECRET__","Forbidden"):
+              assert required in s, "merged A04 route lost: "+required
+          print("WEBUI_P1_CADDY_MERGE_PASS: original 4B routes and WebUI paths survive Caddy adapter")
+          PY

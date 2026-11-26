@@ -1,0 +1,39 @@
+# P1-3: optional production-layout PLAN, NOT an installer.
+# No port publishing. Never execute without read-only host gate and rollback.
+# The existing A03 and A04 Compose projects MUST NOT be recreated here.
+name: s3-voice-webui
+services:
+  auth:
+    image: ${WEBUI_PYTHON_IMAGE:?must provide pinned python@sha256 digest}
+    container_name: s3-voice-webui-auth
+    working_dir: /project
+    command: ["python3", "-B", "tools/ai/webui_auth.py", "serve"]
+    read_only: true
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 96m
+    pids_limit: 80
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      S3_WEBUI_BIND: "0.0.0.0"
+      S3_WEBUI_PORT: "19011"
+      S3_WEBUI_UPSTREAM_OTA: "http://s3-voice-ai-server:8003/xiaozhi/ota/"
+      S3_WEBUI_MODELS_FILE: "/run/secrets/s3-webui-models.json"
+    env_file:
+      - /opt/s3-voice-webui/private/service.env
+    volumes:
+      - /opt/s3-voice-webui/src:/project:ro
+      - /opt/s3-voice-webui/private/models.json:/run/secrets/s3-webui-models.json:ro
+    networks:
+      - front
+      - a03
+# Existing Docker external networks; do NOT recreate them.
+networks:
+  front:
+    external: true
+    name: s3-voice-ai-edge_front
+  a03:
+    external: true
+    name: s3-voice-ai_default
