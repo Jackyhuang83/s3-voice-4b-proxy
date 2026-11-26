@@ -26,7 +26,7 @@ jobs:
           root = pathlib.Path.cwd()
           roadmap = (root / "docs/ai/WEBUI-ROADMAP.md").read_text(encoding="utf-8")
           baseline = (root / "docs/ai/WEBUI-P0-BASELINE.md").read_text(encoding="utf-8")
-          assert "新增按分钟" in roadmap, "missing cost gate"
+          assert "按分钟计费" in roadmap, "missing metered-audio exclusion"
           assert "不增加按分钟" in roadmap, "missing zero-metered-voice budget"
           assert "P5-2" in roadmap and "P0-1" in roadmap
           weights = []
