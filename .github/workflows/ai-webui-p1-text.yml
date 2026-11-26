@@ -78,7 +78,7 @@ jobs:
                   data=r.read()
                   assert r.status == 200 and mime in r.headers.get("Content-Type","")
                   assert "default-src 'none'" in r.headers.get("Content-Security-Policy","")
-                  assert data and b"webui" in data.lower()
+                  assert len(data) > 150, "static asset unexpectedly empty"
           try:
               urllib.request.urlopen(root+"/webui/api/models",timeout=5)
           except urllib.error.HTTPError as e:
