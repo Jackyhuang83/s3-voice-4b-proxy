@@ -1,0 +1,107 @@
+name: S3-Voice WebUI P1 isolated gateway alongside unchanged A04
+on:
+  pull_request:
+    paths:
+      - 'deploy/ai/webui/Caddyfile.isolated'
+      - 'deploy/ai/webui/docker-compose.isolated*.yml'
+      - 'tests/ai/test_webui_isolated_gateway.py'
+      - 'docs/ai/P1-WEBUI-ISOLATED.md'
+      - 'docs/ai/WEBUI-ROADMAP.md'
+      - '.github/workflows/ai-webui-isolated.yml'
+      - '.github/workflows/ai-webui-p0.yml'
+      - '.github/workflows/ai-webui-p1-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p1-isolated-static:
+    name: P1-3-R2 protected original gateway and separated production layout
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove only one last P1 integration PR and no old services touched
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD | while IFS= read -r name; do
+            case "$name" in
+              docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-ISOLATED.md|deploy/ai/webui/Caddyfile.isolated|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|tests/ai/test_webui_isolated_gateway.py|.github/workflows/ai-webui-isolated.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml) ;;
+              *) echo "WEBUI_ISOLATED_SCOPE_FAIL: unexpected path $name"; exit 1;;
+            esac
+          done
+          echo 'WEBUI_ISOLATED_NO_A04_CHANGE_PASS: original A04 scripts and Caddyfile untouched'
+      - name: Validate two production sidecars without starting containers or exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/s3-voice-webui/private
+          sudo sh -c 'printf "S3_WEBUI_ORIGIN=https://voice.example.test\nS3_WEBUI_OWNER_SECRET=CI_PLACEHOLDER_OWNER_0123456789abcdef\nS3_WEBUI_GATE_SECRET=CI_PLACEHOLDER_GATE_0123456789abcdef\nS3_WEBUI_DEVICE_ID=02:55:66:77:88:99\nS3_WEBUI_CLIENT_ID=f1a2b3c4-a1b2-c3d4-e5f6-a1b2c3d4e5f6\n" > /opt/s3-voice-webui/private/auth.env'
+          sudo sh -c 'printf "S3_WEBUI_GATE_SECRET=CI_PLACEHOLDER_GATE_0123456789abcdef\n" > /opt/s3-voice-webui/private/gateway.env'
+          export WEBUI_PYTHON_IMAGE="python:3.13-alpine@sha256:$(printf 'a%.0s' {1..64})"
+          export WEBUI_CADDY_IMAGE="caddy:2.11.7-alpine@sha256:$(printf 'b%.0s' {1..64})"
+          docker compose -f deploy/ai/webui/docker-compose.isolated.example.yml config --format json >/tmp/webui-isolated-layout.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path("/tmp/webui-isolated-layout.json").read_text())
+          assert set(c["services"])=={"auth","gateway"}
+          assert set(c["networks"])=={"a03","front"}
+          assert all(v.get("external") for v in c["networks"].values())
+          for name,service in c["services"].items():
+              assert not service.get("ports")
+              assert service["read_only"]
+              assert service["restart"]=="no"
+              assert service["cap_drop"]==["ALL"]
+              assert set(service["networks"])=={"a03","front"}
+              assert "@sha256:" in service["image"]
+          auth=c["services"]["auth"]
+          gateway=c["services"]["gateway"]
+          assert "auth.env" in " ".join(auth["env_file"])
+          assert "gateway.env" in " ".join(gateway["env_file"])
+          assert "auth.env" not in " ".join(gateway["env_file"])
+          assert "gateway.env" not in " ".join(auth["env_file"])
+          assert any("models.json" in item.get("source","") for item in auth["volumes"])
+          print("WEBUI_ISOLATED_COMPOSE_PASS: 2 digest-pinned read-only sidecars; old A04 is not a service")
+          PY
+  p1-isolated-two-caddy:
+    name: P1-3-R2 two simultaneous Caddy gateways, old OTA/WS and new owner WS
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Generate synthetic legacy A04 Caddy file from original source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          template=Path("deploy/ai/a04/Caddyfile.in").read_text()
+          assert template.count("__PAIR_SECRET__") == 2
+          assert template.count("__DEVICE_ID__") == 2
+          assert template.count("__CLIENT_ID__") == 2
+          test=template.replace("__PAIR_SECRET__","synthetic-path-not-real").replace("__DEVICE_ID__","02:55:66:77:88:99").replace("__CLIENT_ID__","f1a2b3c4-a1b2-c3d4-e5f6-a1b2c3d4e5f6")
+          Path("deploy/ai/webui/Caddyfile.legacy.ci").write_text(test)
+          print("WEBUI_ISOLATED_LEGACY_FIXTURE_PASS: original immutable A04 template rendered only in runner")
+          PY
+      - name: Start isolated Caddy+Auth and old A04 Caddy on runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=deploy/ai/webui/docker-compose.isolated.ci.yml
+          cleanup() {
+            rc=$?
+            if test "$rc" -ne 0; then
+              docker compose -f "$file" ps -a || true
+              docker compose -f "$file" logs --no-color --tail 40 || true
+            fi
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          docker compose -f "$file" up -d --pull always
+          python3 -m unittest discover -s tests/ai -p 'test_webui_isolated_gateway.py' -v
+          echo "WEBUI_ISOLATED_BOTH_CADDY_PASS: legacy A04 101/200/403, owner WebUI 101/403, independent routes"
