@@ -1,0 +1,63 @@
+name: S3-Voice WebUI P0 roadmap and non-invasive audit
+on:
+  pull_request:
+    paths:
+      - 'docs/ai/WEBUI-*.md'
+      - '.github/workflows/ai-webui-p0.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  webui-p0-readonly:
+    name: P0 documentation, scope and 100-point roadmap
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate documentation and 12 PR weights offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import re
+          root = pathlib.Path.cwd()
+          roadmap = (root / "docs/ai/WEBUI-ROADMAP.md").read_text(encoding="utf-8")
+          baseline = (root / "docs/ai/WEBUI-P0-BASELINE.md").read_text(encoding="utf-8")
+          assert "按分钟计费" in roadmap, "missing metered-audio exclusion"
+          assert "不增加按分钟" in roadmap, "missing zero-metered-voice budget"
+          assert "P5-2" in roadmap and "P0-1" in roadmap
+          weights = []
+          for line in roadmap.splitlines():
+              match = re.match(r'^\| P[0-5] [^|]+\|\s*(?:\d+)?\s*\|\s*P[0-5]-[12][^|]*\|\s*(\d+)\s*\|', line)
+              if match:
+                  weights.append(int(match.group(1)))
+          assert len(weights) == 12, f"expected 12 logical PRs, got {len(weights)}"
+          assert sum(weights) == 100, f"invalid 100-point weights: {weights}"
+          assert len([line for line in roadmap.splitlines() if re.match(r'^\| P[0-5] [^|]+\|\s*(?:\d+)?\s*\|\s*P[0-5]-[12][^|]*\|', line)]) == 12, "unexpected PR stage rows"
+          for title in ("A03", "A04", "A05", "A06", "A07", "A09", "4B", "CI", "VPS"):
+              assert title in baseline, f"missing audited scope: {title}"
+          for name in (
+              "tools/ai/a03-server.sh", "tools/ai/a04-edge.sh",
+              "tools/ai/a05-generic.sh", "tools/ai/a06-voice.sh",
+              "tools/ai/a09_lite.py", "docs/ai/A09-LITE.md",
+          ):
+              assert (root / name).is_file(), f"missing inherited source baseline: {name}"
+          assert "#27" in baseline and "#28" in baseline and "#29" in baseline and "#30" in baseline
+          print("WEBUI_P0_ROADMAP_PASS: 6 phases / 12 PR / 100 points; no paid audio API")
+          print("WEBUI_P0_BASELINE_PASS: source files and known unfinished PRs tracked")
+          PY
+      - name: Verify P0 changes cannot modify product runtime or old CI
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD | while IFS= read -r path; do
+            case "$path" in
+              docs/ai/WEBUI-*.md|.github/workflows/ai-webui-p0.yml) ;;
+              *) echo "WEBUI_P0_SCOPE_FAIL: unexpected changed path $path"; exit 1 ;;
+            esac
+          done
+          echo "WEBUI_P0_READONLY_PASS: documentation and dedicated CI only"
