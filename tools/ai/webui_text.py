@@ -21,6 +21,11 @@ FILES = {
     "/webui/": ("index.html", "text/html; charset=utf-8"),
     "/webui/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/webui/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/webui/audio-opus.mjs": ("audio-opus.mjs", "text/javascript; charset=utf-8"),
+    "/webui/audio-ui.mjs": ("audio-ui.mjs", "text/javascript; charset=utf-8"),
+    "/webui/audio-worklet.js": ("audio-worklet.js", "text/javascript; charset=utf-8"),
+    "/webui/vendor/libopus/dist/index.js": ("vendor/libopus/dist/index.js", "text/javascript; charset=utf-8"),
+    "/webui/vendor/libopus/dist/generated/libopus.generated.mjs": ("vendor/libopus/dist/generated/libopus.generated.mjs", "text/javascript; charset=utf-8"),
 }
 MAX_REQUEST_BYTES = 32768
 MAX_HISTORY = 20
@@ -116,7 +121,7 @@ def serve_static(handler):
     handler.send_header("X-Frame-Options", "DENY")
     handler.send_header("Referrer-Policy", "no-referrer")
     handler.send_header("Content-Security-Policy",
-        "default-src 'none'; script-src 'self'; style-src 'self'; "
+        "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; "
         "connect-src 'self'; img-src 'self' data:; base-uri 'none'; "
         "form-action 'self'; object-src 'none'; frame-ancestors 'none'")
     handler.send_header("Content-Length", str(len(content)))
