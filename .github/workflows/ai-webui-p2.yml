@@ -63,7 +63,7 @@ jobs:
           assert "wasm-unsafe-eval" in html and "wasm-unsafe-eval" in p.read_text()
           assert "audio-worklet.js" in Path("webui/audio-ui.mjs").read_text()
           assert "getUserMedia" in Path("webui/audio-ui.mjs").read_text()
-          assert "tts.stop" not in Path("webui/audio-ui.mjs").read_text()
+          assert "clearAllAudio()" not in Path("webui/audio-ui.mjs").read_text()
           assert "libopus-wasm" in Path("webui/audio-opus.mjs").read_text()
           print("WEBUI_P2_BROWSER_SOURCE_PASS: HTTPS/AudioWorklet, WASM CSP and self-hosted artifacts")
           PY
