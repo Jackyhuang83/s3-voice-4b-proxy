@@ -39,15 +39,24 @@ def ws(cookie="", origin=ORIGIN, path="/webui/ws", extra=None):
 class CaddyContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        for _ in range(35):
+        # Caddy's fallback 404 can be served before its upstream auth process
+        # starts accepting connections. Check the real proxied auth endpoint
+        # instead; HTTP 502 is NOT a valid "service ready" signal.
+        last_status = None
+        for _ in range(80):
             try:
-                status, _, _ = call("GET", "/bad")
-                if status == 404: break
-            except (ConnectionError, OSError):
+                status, _, body = call("GET", "/webui/api/session")
+                last_status = status
+                if status == 200 and json.loads(body) == {"authenticated": False}:
+                    break
+            except (ConnectionError, OSError, ValueError, json.JSONDecodeError):
                 pass
             time.sleep(0.25)
         else:
-            raise RuntimeError("isolated caddy did not start")
+            raise RuntimeError(
+                "Caddy/auth service not ready (last HTTP status: %s)" %
+                last_status
+            )
 
     def login(self):
         status, headers, body = call("POST","/webui/api/login",{"secret":OWNER},{"Origin":ORIGIN})
