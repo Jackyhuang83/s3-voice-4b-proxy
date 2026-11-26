@@ -53,7 +53,7 @@ jobs:
               esac
             done
             echo "WEBUI_P2_SCOPE_PASS: 2.1 source and cross-phase CI only"
-          elif if printf '%s\n' "$changed" | grep -Fxq 'deploy/ai/webui/Caddyfile.isolated'; then
+          elif printf '%s\n' "$changed" | grep -Fxq 'deploy/ai/webui/Caddyfile.isolated'; then
             printf '%s\n' "$changed" | while IFS= read -r path; do
               case "$path" in
                 docs/ai/WEBUI-ROADMAP.md|docs/ai/P1-WEBUI-ISOLATED.md|deploy/ai/webui/Caddyfile.isolated|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|tests/ai/test_webui_isolated_gateway.py|.github/workflows/ai-webui-isolated.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml|.github/workflows/ai-webui-p1.yml|.github/workflows/ai-webui-p1-text.yml) ;;
