@@ -1,0 +1,132 @@
+name: S3-Voice WebUI P2-1 raw 16k Opus and production Caddy capabilities
+on:
+  pull_request:
+    paths:
+      - 'webui/audio-*.mjs'
+      - 'webui/audio-worklet.js'
+      - 'webui/index.html'
+      - 'tools/ai/webui-vendor-opus.sh'
+      - 'tools/ai/webui_text.py'
+      - 'deploy/ai/webui/docker-compose.isolated*.yml'
+      - 'deploy/ai/webui/Caddyfile.isolated'
+      - 'tests/ai/test_webui_opus.mjs'
+      - 'docs/ai/P2-WEBUI-AUDIO.md'
+      - 'docs/ai/WEBUI-ROADMAP.md'
+      - '.github/workflows/ai-webui-p2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-opus:
+    name: P2-1 verified libopus-wasm 0.4.1 30 raw frames and Safari input contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check scripts before any downloads
+        run: |
+          bash -n tools/ai/webui-vendor-opus.sh
+          node --check webui/audio-opus.mjs
+          node --check webui/audio-ui.mjs
+          node --check webui/audio-worklet.js
+          node --check tests/ai/test_webui_opus.mjs
+          python3 -m py_compile tools/ai/webui_text.py
+      - name: Verify official package checksum and retained MIT/BSD notices
+        run: bash tools/ai/webui-vendor-opus.sh
+      - name: Encode + decode 30 ACTUAL WASM 16kHz 60ms raw Opus packets
+        run: node tests/ai/test_webui_opus.mjs
+      - name: Security and CSP negative assertions for browser audio
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from importlib.util import spec_from_file_location,module_from_spec
+          p=Path("tools/ai/webui_text.py")
+          spec=spec_from_file_location("text",p)
+          t=module_from_spec(spec)
+          spec.loader.exec_module(t)
+          required=[
+             "/webui/audio-ui.mjs","/webui/audio-opus.mjs",
+             "/webui/audio-worklet.js",
+             "/webui/vendor/libopus/dist/index.js",
+             "/webui/vendor/libopus/dist/generated/libopus.generated.mjs",
+          ]
+          assert all(x in t.FILES for x in required)
+          assert all((t.ROOT/t.FILES[x][0]).is_file() for x in required)
+          html=Path("webui/index.html").read_text()
+          assert "voiceButton" in html and "audio-ui.mjs" in html
+          assert "wasm-unsafe-eval" in html and "wasm-unsafe-eval" in p.read_text()
+          assert "audio-worklet.js" in Path("webui/audio-ui.mjs").read_text()
+          assert "getUserMedia" in Path("webui/audio-ui.mjs").read_text()
+          assert "tts.stop" not in Path("webui/audio-ui.mjs").read_text()
+          assert "libopus-wasm" in Path("webui/audio-opus.mjs").read_text()
+          print("WEBUI_P2_BROWSER_SOURCE_PASS: HTTPS/AudioWorklet, WASM CSP and self-hosted artifacts")
+          PY
+  caddy-production:
+    name: P2-1 production-equivalent Caddy capabilities, owner WS and original A04 regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Confirm production layout fixes Issue 38 and no original services changed
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/s3-voice-webui/private
+          sudo sh -c 'printf "S3_WEBUI_ORIGIN=https://voice.example.test\nS3_WEBUI_OWNER_SECRET=CI_P2_FAKE_00000000000000000000000\nS3_WEBUI_GATE_SECRET=CI_GATE_FAKE_000000000000000000000000\nS3_WEBUI_DEVICE_ID=02:55:66:77:88:99\nS3_WEBUI_CLIENT_ID=f1a2b3c4-a1b2-c3d4-e5f6-a1b2c3d4e5f6\n" > /opt/s3-voice-webui/private/auth.env'
+          sudo sh -c 'printf "S3_WEBUI_GATE_SECRET=CI_GATE_FAKE_000000000000000000000000\n" > /opt/s3-voice-webui/private/gateway.env'
+          export WEBUI_PYTHON_IMAGE="python:3.13-alpine@sha256:$(printf 'a%.0s' {1..64})"
+          export WEBUI_CADDY_IMAGE="caddy:2.11.7-alpine@sha256:$(printf 'b%.0s' {1..64})"
+          docker compose -f deploy/ai/webui/docker-compose.isolated.example.yml config --format json >/tmp/webui-p2-1-layout.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path("/tmp/webui-p2-1-layout.json").read_text())
+          assert set(c["services"])=={"auth","gateway"}
+          auth=c["services"]["auth"]; gateway=c["services"]["gateway"]
+          assert set(auth["networks"])=={"a03"},"auth must not join Tunnel-facing network"
+          assert set(gateway["networks"])=={"a03","front"}
+          assert gateway["cap_drop"]==["ALL"]
+          assert gateway["cap_add"]==["NET_BIND_SERVICE"]
+          assert gateway["user"]=="1000:1000"
+          assert "no-new-privileges:true" in gateway["security_opt"]
+          assert all(not s.get("ports") and s["read_only"] for s in c["services"].values())
+          assert all("@sha256:" in s["image"] for s in c["services"].values())
+          print("WEBUI_P2_PRODUCTION_GATE_PASS: official Caddy effective file capability, separate auth network")
+          PY
+      - name: Run real official Caddy in the SAME drop/add capability sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          t=Path("deploy/ai/a04/Caddyfile.in").read_text()
+          for old,new in [
+              ("__PAIR_SECRET__","synthetic-path-not-real"),
+              ("__DEVICE_ID__","02:55:66:77:88:99"),
+              ("__CLIENT_ID__","f1a2b3c4-a1b2-c3d4-e5f6-a1b2c3d4e5f6")
+          ]:
+              t=t.replace(old,new)
+          Path("deploy/ai/webui/Caddyfile.legacy.ci").write_text(t)
+          PY
+          file=deploy/ai/webui/docker-compose.isolated.ci.yml
+          cleanup() {
+            code=$?
+            if [ "$code" -ne 0 ]; then
+              docker compose -f "$file" ps -a || true
+              docker compose -f "$file" logs --no-color --tail 35 || true
+            fi
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+            exit "$code"
+          }
+          trap cleanup EXIT
+          docker compose -f "$file" up -d --pull always
+          python3 -m unittest discover -s tests/ai -p 'test_webui_isolated_gateway.py' -v
+          echo "WEBUI_P2_CAPABILITIES_RUNTIME_PASS: Caddy real container booted under cap_drop ALL / cap_add NET_BIND_SERVICE"
