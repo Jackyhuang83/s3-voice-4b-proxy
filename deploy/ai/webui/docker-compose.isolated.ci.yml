@@ -33,6 +33,10 @@ services:
         aliases: [s3-voice-ai-server]
   webui-gateway:
     image: caddy:2.11.7-alpine
+    user: '1000:1000'
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
     volumes:
       - ./Caddyfile.isolated:/etc/caddy/Caddyfile:ro
     environment:
