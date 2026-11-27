@@ -47,7 +47,9 @@ async function openVoice() {
     processor: null, quiet: null, playbackAt: 0, ready: false, cancelled: false,
     sent: 0, received: 0, underrun: 0, ttsStopped: false,
     speaking: false, sources: new Set(), helloTimer: null, resumeTimer: null,
-    inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission"
+    inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission",
+    lastVoiceAt: null, lastSttAt: null, asrWaitMs: null,
+    ttsStartAt: null, firstAudioMs: null, audioPacketsInTurn: 0
   };
   current = state;
   try {
@@ -89,7 +91,11 @@ async function openVoice() {
     state.processor.port.onmessage = (event) => {
       if (state.cancelled || !state.ready || state.speaking || event.data?.type !== "frame") return;
       if (state.ws?.readyState !== WebSocket.OPEN) return;
-      state.inputPeak = Math.max(state.inputPeak, inputLevel(event.data.data));
+      const level = inputLevel(event.data.data);
+      state.inputPeak = Math.max(state.inputPeak, level);
+      // Last significant input is a coarse proxy for voice-end time.
+      // Do not store audio samples or transcripts in diagnostics.
+      if (level >= 1) state.lastVoiceAt = performance.now();
       // Back-pressure: never grow an unbounded outbound audio backlog.
       if (state.ws.bufferedAmount > 65536) {
         state.underrun++;
@@ -140,6 +146,10 @@ async function openVoice() {
       if (state.cancelled) return;
       if (event.data instanceof ArrayBuffer) {
         try {
+          if (state.ttsStartAt !== null && state.firstAudioMs === null) {
+            state.firstAudioMs = performance.now() - state.ttsStartAt;
+          }
+          state.audioPacketsInTurn++;
           const floatSamples = state.codec.decodeFloat(new Uint8Array(event.data));
           const ctx = state.ctx;
           const audio = ctx.createBuffer(1,floatSamples.length,16000);
@@ -182,20 +192,34 @@ async function openVoice() {
         },4500);
         status("正在听，请说话（检测音量）");
       } else if (message.type === "stt" && typeof message.text === "string") {
-        status("识别：" + message.text.slice(0,90));
+        state.lastSttAt = performance.now();
+        state.asrWaitMs = state.lastVoiceAt === null ? null :
+          Math.max(0, state.lastSttAt - state.lastVoiceAt);
+        status("已识别｜结束录音→识别约 " +
+               (state.asrWaitMs === null ? "未知" : (state.asrWaitMs / 1000).toFixed(1) + "s") +
+               "｜等待 AI 回答");
       } else if (message.type === "tts") {
         if (message.state === "start") {
           state.ttsStopped = false;
           state.speaking = true;
+          state.ttsStartAt = performance.now();
+          state.firstAudioMs = null;
+          state.audioPacketsInTurn = 0;
           clearTimeout(state.resumeTimer);
           state.resumeTimer = null;
           // XiaoZhi listening -> speaking: do not feed AI playback into ASR.
           state.processor?.port.postMessage({type:"stop"});
-          status("AI 正在回答…");
+          const sttToTts = state.lastSttAt === null ? null :
+            Math.max(0, state.ttsStartAt - state.lastSttAt);
+          status("AI 正在回答｜识别→TTS启动 " +
+                 (sttToTts === null ? "未知" : (sttToTts / 1000).toFixed(1) + "s"));
         }
         if (message.state === "stop") {
           state.ttsStopped = true;
-          status("AI 已发送回答，正在播放剩余音频");
+          const ttsFirst = state.firstAudioMs === null ? "未收到音频帧" :
+            (state.firstAudioMs / 1000).toFixed(1) + "s";
+          status("TTS首个音频帧 " + ttsFirst +
+                 "｜收到 " + state.audioPacketsInTurn + " 帧｜播放尾音中");
           // Resume only after the scheduled playback tail has finished.
           const remainingMs = Math.max(0, state.playbackAt - state.ctx.currentTime) * 1000;
           clearTimeout(state.resumeTimer);
@@ -205,7 +229,10 @@ async function openVoice() {
                 state.ws?.readyState !== WebSocket.OPEN) return;
             state.speaking = false;
             state.processor?.port.postMessage({type:"start"});
-            status("正在听，请说话");
+            status("可继续说话｜上一轮TTS首帧 " +
+                   (state.firstAudioMs === null ? "未收到" :
+                    (state.firstAudioMs / 1000).toFixed(1) + "s") +
+                   "｜音频 " + state.audioPacketsInTurn + " 帧");
           }, Math.ceil(remainingMs) + 80);
         }
       }
