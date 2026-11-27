@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0e1724">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'">
-  <title>S3-Voice</title>
+  <title>S3-Voice AI助手</title>
   <link rel="stylesheet" href="/webui/app.css">
   <script defer src="/webui/app.js"></script>
   <script type="module" src="/webui/audio-ui.mjs"></script>
@@ -14,7 +14,7 @@
 <body>
   <main class="layout">
     <header class="topbar">
-      <div class="brand"><span class="spark">✦</span><span>S3-Voice</span></div>
+      <div class="brand"><span class="spark">✦</span><span>S3-Voice AI助手</span></div>
       <div class="header-side">
         <span class="status" id="connectionStatus">未连接</span>
         <button class="ghost" id="logoutBtn" hidden type="button">退出</button>
@@ -51,7 +51,7 @@
         <div id="welcome" class="welcome">
           <span class="welcome-icon">✦</span>
           <h2>你好，有什么可以帮你？</h2>
-          <p>文字聊天现已提供，实时语音功能将在 P2 阶段接入。</p>
+          <p>可以打字提问，也可以点击麦克风开始语音。</p>
         </div>
       </div>
       <form id="chatForm" class="composer">
@@ -59,12 +59,11 @@
         <textarea id="messageInput" rows="1" maxlength="2000" placeholder="向 AI 提问…" aria-label="输入聊天消息"></textarea>
         <div class="composer-actions">
           <span class="hint">Enter 发送 · Shift+Enter 换行</span>
-          <button id="voiceButton" type="button" class="ghost" aria-pressed="false">开始语音</button>
+          <button id="voiceButton" type="button" class="ghost" aria-label="开始语音" title="开始语音" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" class="s3-mic-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>
           <button id="sendBtn" type="submit" class="primary send" aria-label="发送消息">发送</button>
         </div>
       </form>
-      <p class="footer-hint" id="voiceStatus" role="status" aria-live="polite">语音需要 HTTPS 和麦克风权限。</p>
-      <p class="footer-hint">模型请求经你的 VPS 转发，可能产生文本 Token 费用。历史记录仅保存在本页内存中。</p>
+      <p class="voice-status" id="voiceStatus" role="status" aria-live="polite">点击麦克风开始语音</p>
     </section>
     <div id="appNotice" class="notice" role="status" aria-live="polite"></div>
   </main>
