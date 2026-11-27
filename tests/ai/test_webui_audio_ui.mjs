@@ -4,6 +4,10 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 
 const elements = {};
+const voiceMetricsChildren = [];
+const chatForm = {
+  appendChild(node) {voiceMetricsChildren.push(node);elements[node.id] = node;}
+};
 const voiceButton = {
   textContent: "SVG_ICON_PRESERVED", disabled: false,
   attributes: {}, listeners: {},
@@ -14,10 +18,15 @@ const voiceButton = {
 const logout = {listeners: {}, addEventListener(name, cb) { this.listeners[name] = cb; }};
 const status = {textContent: ""};
 Object.assign(elements, {
-  voiceButton, logoutBtn:logout, voiceStatus:status, chatView:{hidden:false}
+  voiceButton, logoutBtn:logout, voiceStatus:status, chatView:{hidden:false}, chatForm
 });
 Object.defineProperty(globalThis, "document", {configurable:true, value:{
   hidden:false, getElementById(id) {return elements[id];},
+  createElement(tag) {
+    assert.equal(tag,"div");
+    return {id:"",className:"",hidden:false,textContent:"",
+      setAttribute(){ }};
+  },
   addEventListener() {}
 }});
 Object.defineProperty(globalThis, "location", {configurable:true, value:{host:"test.local"}});
@@ -104,6 +113,7 @@ const sandboxed = source.replace(originalImport,
   '});');
 await import("data:text/javascript;base64,"+Buffer.from(sandboxed).toString("base64"));
 
+assert.equal(voiceMetricsChildren.length,1, "one persistent meter beside composer");
 assert.equal(typeof voiceButton.listeners.click, "function");
 await voiceButton.listeners.click();
 assert.equal(voiceButton.disabled,false);
@@ -124,6 +134,8 @@ port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 const initialCount = ws.sent.length;
 assert.equal(initialCount,3);
 assert.ok(ws.sent.at(-1) instanceof Uint8Array);
+assert.equal(elements.voiceMetrics.hidden,false);
+assert.match(elements.voiceMetrics.textContent,/正在听.*已发送 1 帧/);
 assert.match(status.textContent,/已发送|已采集|正在听/, "local mic frame telemetry must be available");
 ws.onmessage({data:JSON.stringify({type:"stt",text:"synthetic words never logged"})});
 assert.match(status.textContent,/已识别.*等待 AI 回答/, "ASR stage timing shown");
@@ -134,6 +146,7 @@ ws.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
 assert.equal(port.messages.at(-1).type,"stop");
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount,"TTS must mute microphone to prevent echo");
+assert.match(elements.voiceMetrics.textContent,/AI 回答中.*麦克风暂停/);
 ws.onmessage({data:new Uint8Array([1,2]).buffer});
 assert.equal(sounds.length,1);
 assert.equal(ws.sent.length,initialCount, "TTS audio must not enable microphone");
@@ -146,6 +159,7 @@ port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount+1,"mic must resume on the same session");
 
 await voiceButton.listeners.click();
+assert.match(elements.voiceMetrics.textContent,/语音已停止.*已发送/);
 assert.equal(ws.closed,true);
 assert.equal(sounds[0].stopped,true,"manual stop must cancel queued speech");
 assert.equal(voiceButton.attributes["aria-pressed"],"false");
