@@ -39,3 +39,24 @@
 | 设备兼容 | 微雪 4B 不受影响、原 A04 设备路由继续正常 | **NOT RUN**，只能在可回退生产试点实测 |
 
 本 PR 暂不声称 A07 卡顿问题已修复，不把 WebUI 正常播放等同于 4B 稳定性。当前不新增任何付费实时语音 API。P1 未达到验收前 P2 的 14 分不授予，项目整体仍 10%。
+
+
+## 2026-11-28 P2-1 安全上线门槛（不允许覆盖线上 P1）
+
+以生产 VPS 上通过 iPhone Safari 真实文字聊天的目录 `/opt/s3-voice-webui/src` 为基线，先**只读**核对，不得直接 `git checkout`、`git reset` 或 `cp -a` 整个 P2 源码覆盖该目录。
+
+### 预检（生产零修改）
+1. 确认四容器均 Running：`s3-voice-ai-server`、`s3-voice-ai-gateway`、`s3-voice-webui-auth`、`s3-voice-webui-gateway`，记录前三者和旧 WebUI 两者的 container ID/StartedAt。
+2. 以仅返回布尔结果的方式确认线上 P1 差异：后端已有 `User-Agent: S3-Voice-WebUI/1.0`、`timeout=90`、`MAX_OUTPUT_BYTES = 524288`、空 `choices` 跳过；前端 JS 仍有 `el("welcome").hidden = true`、已收到文字的错误保留；HTML 仍有 `S3-Voice AI助手`、`voiceButton` SVG；CSS 有 `S3-VOICE-MINIMAL-UI-V1` 和 `S3-MIC-OUTLINE-V1`。不要输出 `models.json`、`auth.env`、Cookie、API 密钥或 WebSocket 令牌。
+3. 确认 P2 GitHub PR #39 所有相关工作流成功且未合并进 `main` 前有准确 head SHA。只有使用固定 Git commit 对应源码，才在**独立、私有、权限受限**的 stage 目录运行 `webui-vendor-opus.sh` 并核对 npm tarball SHA256。stage 源码和生产挂载目录严禁混用。
+4. 在 stage 内确认 Opus WASM 及 JS 资源实际可读，且 Auth/Caddy 白名单与 CSP 仅添加必要的固定路径，禁用 CDN 和目录遍历；验证不会更改既有 A04/Cloudflare Tunnel/4B 身份。
+
+### 集中发布（只有预检通过后）
+1. 创建不可覆盖的时间戳备份：生产 P1 JS、HTML、CSS、`webui_text.py`、新 WebUI Caddyfile 和 Compose，以及既有容器身份；备份私有配置仍留 VPS，不复制到 GitHub。
+2. 以增量合并方式将固定的 `audio-ui.mjs`、`audio-opus.mjs`、`audio-worklet.js` 与带许可证的官方 WASM 加到现有 WebUI 文件树；**保留**线上 P1 JS、CSS、模型与 API 密钥、SSE 超时/Usage 修复。P2 HTML 只新增带 `voiceButton` 的 module 脚本及 `voiceStatus` 状态区域，避免重复创建已经存在的 SVG。
+3. 新 WebUI 的 Auth 静态白名单与 CSP/WASM 必要项同步，Gateway 仅增加受限静态路由。固定路径先用 Auth/Gateway 本地 200、Content-Type、CSP、WASM 初始化及权限负向测试验证。不得扩大对外路由，尤其不得影响 A04 原 `/xiaozhi/v1/` 设备通道。
+4. 仅在所有检查 PASS 时，依次重载**独立 WebUI** Gateway/Auth（修改后端 Python 需重启 Auth，导致 WebUI 密码会话重新登录），确认旧 A03/A04 容器 ID 与启动时间保持不变。任何失败只回滚本次新 WebUI 文件及服务，不回滚或触碰旧设备；有失败时不得进入 iPhone 实测。
+
+### 真实验收
+- iPhone Safari：Access + WebUI 登录、原文字聊天、长思考回复、点击麦克风权限、WSS 101、Hello、监听/说话→ASR→TTS 有声播放、播放尾音后恢复监听、主动停止和退出、后台关闭，至少 10 分钟。
+- 区分四级：源码检查、CI 通过、隔离 VPS 功能通过、iPhone/4B 真实验证通过。P2-1 未拿到最后两级之前仍为 0/14。
