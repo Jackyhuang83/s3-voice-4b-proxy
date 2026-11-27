@@ -48,10 +48,13 @@ globalThis.AudioWorkletNode = Worklet;
 window.AudioWorkletNode = Worklet;
 
 const sounds = [];
+let resumeCalls = 0;
 let blockNextModule = false;
 let releasePendingModule = null;
 class AudioContextMock {
-  constructor() {
+  constructor(options) {
+    assert.equal(options.sampleRate, undefined, "browser native sample rate required");
+
     this.currentTime = 0;
     this.destination = {};
     this.audioWorklet = {addModule:async path=>{
@@ -59,7 +62,7 @@ class AudioContextMock {
       if (blockNextModule) await new Promise(resolve=>{releasePendingModule = resolve;});
     }};
   }
-  async resume() {}
+  async resume() {resumeCalls++;}
   createMediaStreamSource() {return {connect(){},disconnect(){}};}
   createGain() {return {gain:{value:1},connect(){},disconnect(){}};}
   createBuffer(channels,length,rate) {
@@ -104,6 +107,7 @@ await import("data:text/javascript;base64,"+Buffer.from(sandboxed).toString("bas
 assert.equal(typeof voiceButton.listeners.click, "function");
 await voiceButton.listeners.click();
 assert.equal(voiceButton.disabled,false);
+assert.ok(resumeCalls >= 1, "AudioContext resume was not requested");
 assert.equal(voiceButton.attributes["aria-label"],"停止语音");
 assert.equal(voiceButton.textContent,"SVG_ICON_PRESERVED");
 const ws = sockets.at(-1);
@@ -120,6 +124,7 @@ port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 const initialCount = ws.sent.length;
 assert.equal(initialCount,3);
 assert.ok(ws.sent.at(-1) instanceof Uint8Array);
+assert.match(status.textContent,/已发送|已采集|正在听/, "local mic frame telemetry must be available");
 
 ws.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
 assert.equal(port.messages.at(-1).type,"stop");
