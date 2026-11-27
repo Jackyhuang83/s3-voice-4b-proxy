@@ -48,7 +48,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Fxq 'webui/audio-opus.mjs'; then
             printf '%s\n' "$changed" | while IFS= read -r filepath; do
               case "$filepath" in
-                docs/ai/WEBUI-ROADMAP.md|docs/ai/P2-WEBUI-AUDIO.md|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|deploy/ai/webui/Caddyfile.isolated|tools/ai/webui-vendor-opus.sh|tools/ai/webui_text.py|webui/audio-opus.mjs|webui/audio-ui.mjs|webui/audio-worklet.js|webui/index.html|tests/ai/test_webui_opus.mjs|.github/workflows/ai-webui-p2.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml|.github/workflows/ai-webui-p1.yml|.github/workflows/ai-webui-p1-text.yml|.github/workflows/ai-webui-isolated.yml|tools/ai/webui_pilot.py|tests/ai/test_webui_pilot.py|tests/ai/test_webui_pilot_docker.py|docs/ai/P1-WEBUI-PILOT.md) ;;
+                docs/ai/WEBUI-ROADMAP.md|docs/ai/P2-WEBUI-AUDIO.md|deploy/ai/webui/docker-compose.isolated.example.yml|deploy/ai/webui/docker-compose.isolated.ci.yml|deploy/ai/webui/Caddyfile.isolated|tools/ai/webui-vendor-opus.sh|tools/ai/webui_text.py|webui/audio-opus.mjs|webui/audio-ui.mjs|webui/audio-worklet.js|webui/index.html|tests/ai/test_webui_opus.mjs|tests/ai/test_webui_audio_ui.mjs|webui/app.css|.github/workflows/ai-webui-p2.yml|.github/workflows/ai-webui-p0.yml|.github/workflows/ai-webui-p1-preflight.yml|.github/workflows/ai-webui-p1.yml|.github/workflows/ai-webui-p1-text.yml|.github/workflows/ai-webui-isolated.yml|tools/ai/webui_pilot.py|tests/ai/test_webui_pilot.py|tests/ai/test_webui_pilot_docker.py|docs/ai/P1-WEBUI-PILOT.md) ;;
                 *) echo "WEBUI_P2_SCOPE_FAIL: $filepath"; exit 1;;
               esac
             done
