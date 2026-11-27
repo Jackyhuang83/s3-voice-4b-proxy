@@ -72,3 +72,29 @@ select { background: var(--surface); color: var(--text); border: 1px solid var(-
   .hint { font-size: 10px; }
   .footer-hint { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* WEBUI P2 MICROPHONE: accessible compact voice status */
+#voiceButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  padding: 0;
+}
+#voiceButton .s3-mic-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+.voice-status {
+  max-width: 784px;
+  margin: 6px auto 4px;
+  padding: 0 16px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
