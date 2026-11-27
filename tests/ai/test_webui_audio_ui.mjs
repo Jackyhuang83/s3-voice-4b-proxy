@@ -48,11 +48,16 @@ globalThis.AudioWorkletNode = Worklet;
 window.AudioWorkletNode = Worklet;
 
 const sounds = [];
+let blockNextModule = false;
+let releasePendingModule = null;
 class AudioContextMock {
   constructor() {
     this.currentTime = 0;
     this.destination = {};
-    this.audioWorklet = {addModule:async path=>assert.equal(path,"/webui/audio-worklet.js")};
+    this.audioWorklet = {addModule:async path=>{
+      assert.equal(path,"/webui/audio-worklet.js");
+      if (blockNextModule) await new Promise(resolve=>{releasePendingModule = resolve;});
+    }};
   }
   async resume() {}
   createMediaStreamSource() {return {connect(){},disconnect(){}};}
@@ -150,4 +155,20 @@ const countStop=port2.messages.length;
 await new Promise(resolve=>setTimeout(resolve,360));
 assert.equal(port2.messages.length,countStop,"old TTS tail must not restart mic");
 
-console.log("WEBUI_P2_AUDIO_UI_PASS: SVG preserved, WS hello, mic muted for TTS, tail resume, stop and pending timer cancellation");
+// Logging out while Safari is loading an AudioWorklet must not open a
+// new WebSocket after session cancellation (no orphan mic/session).
+blockNextModule = true;
+const connectionsBefore = sockets.length;
+const pendingStart = voiceButton.listeners.click();
+for (let i=0; !releasePendingModule && i<50; i++) {
+  await new Promise(resolve=>setTimeout(resolve,2));
+}
+assert.equal(typeof releasePendingModule,"function");
+logout.listeners.click();
+releasePendingModule();
+await pendingStart;
+assert.equal(sockets.length,connectionsBefore,
+  "cancellation during AudioWorklet load must not create a WebSocket");
+assert.equal(voiceButton.textContent,"SVG_ICON_PRESERVED");
+
+console.log("WEBUI_P2_AUDIO_UI_PASS: SVG retained, Hello and Opus mic flow, TTS mute/tail resume, stop, timers and async logout");
