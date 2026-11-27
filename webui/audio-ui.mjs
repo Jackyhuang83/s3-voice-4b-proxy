@@ -15,7 +15,23 @@ function setVoiceButton(label, pressed) {
   if (button && !button.querySelector("svg")) button.textContent = label;
 }
 
-function status(message) { statusText.textContent = message; }
+function status(message) { if (statusText) statusText.textContent = message; }
+// Local-only microphone diagnostic. No speech content, IDs or secrets are logged.
+function inputLevel(frame) {
+  if (!(frame instanceof Int16Array) || !frame.length) return 0;
+  let power = 0;
+  for (const sample of frame) power += (sample / 32768) ** 2;
+  return Math.round(100 * Math.sqrt(power / frame.length));
+}
+function audioStartupError(error) {
+  if (error?.message === "AUDIO_CONTEXT_SUSPENDED") return "音频上下文未启动";
+  const name = error?.name || "UnknownError";
+  if (name === "NotAllowedError") return "Safari 麦克风权限被拒绝";
+  if (name === "NotFoundError") return "没有可用麦克风";
+  if (name === "NotReadableError") return "麦克风被占用";
+  if (name === "NotSupportedError") return "不支持当前音频配置";
+  return "启动阶段 " + String(name).slice(0,36);
+}
 function send(ws, message) {
   if (ws.readyState !== WebSocket.OPEN) return false;
   ws.send(JSON.stringify(message));
@@ -30,7 +46,8 @@ async function openVoice() {
     ws: null, codec: null, ctx: null, stream: null, source: null,
     processor: null, quiet: null, playbackAt: 0, ready: false, cancelled: false,
     sent: 0, received: 0, underrun: 0, ttsStopped: false,
-    speaking: false, sources: new Set(), helloTimer: null, resumeTimer: null
+    speaking: false, sources: new Set(), helloTimer: null, resumeTimer: null,
+    inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission"
   };
   current = state;
   try {
@@ -39,12 +56,17 @@ async function openVoice() {
     const stream = navigator.mediaDevices.getUserMedia({
       audio: {echoCancellation:true,noiseSuppression:true,channelCount:1}
     });
-    state.ctx = new AudioContext({sampleRate:16000,latencyHint:"interactive"});
+    // Worklet already converts the native browser rate to 16k.
+    // Resume inside the user's original tap, before async WASM loading.
+    state.ctx = new AudioContext({latencyHint:"interactive"});
+    const resumePromise = state.ctx.resume();
     state.stream = await stream;
     if (state.cancelled) {
       state.stream.getTracks().forEach(track=>track.stop());
       return;
     }
+    state.stage = "opus";
+    status("麦克风授权成功，正在初始化 Opus…");
     state.codec = await createXiaozhiCodec();
     if (state.cancelled) {
       state.codec.free();
@@ -54,8 +76,11 @@ async function openVoice() {
     state.stream.getAudioTracks().forEach(track=>{
       track.addEventListener("ended",()=>{status("麦克风已关闭");stopVoice(state);},{once:true});
     });
-    await state.ctx.resume();
+    state.stage = "audio";
+    await resumePromise;
     if (state.cancelled) return;
+    if (state.ctx.state === "suspended") throw new Error("AUDIO_CONTEXT_SUSPENDED");
+    status("正在启动录音处理器…");
     await state.ctx.audioWorklet.addModule("/webui/audio-worklet.js");
     // Safari tab backgrounding or logout during Worklet loading must not
     // create an orphan microphone processor or a new WebSocket afterwards.
@@ -64,6 +89,7 @@ async function openVoice() {
     state.processor.port.onmessage = (event) => {
       if (state.cancelled || !state.ready || state.speaking || event.data?.type !== "frame") return;
       if (state.ws?.readyState !== WebSocket.OPEN) return;
+      state.inputPeak = Math.max(state.inputPeak, inputLevel(event.data.data));
       // Back-pressure: never grow an unbounded outbound audio backlog.
       if (state.ws.bufferedAmount > 65536) {
         state.underrun++;
@@ -75,6 +101,12 @@ async function openVoice() {
         const opus = state.codec.encode(event.data.data);
         state.ws.send(opus);
         state.sent++;
+        const now = Date.now();
+        if (now - state.lastMeterMs >= 1200) {
+          state.lastMeterMs = now;
+          status("麦克风已采集｜发送 " + state.sent +
+                 " 帧｜输入峰值 " + state.inputPeak + "%");
+        }
       } catch {
         status("音频编码异常，已断开");
         stopVoice(state);
@@ -87,6 +119,8 @@ async function openVoice() {
     state.processor.connect(state.quiet);
     state.quiet.connect(state.ctx.destination);
 
+    state.stage = "websocket";
+    status("麦克风就绪，正在连接语音服务器…");
     state.ws = new WebSocket("wss://" + location.host + "/webui/ws");
     state.ws.binaryType = "arraybuffer";
     state.ws.onopen = () => {
@@ -97,10 +131,10 @@ async function openVoice() {
       });
       state.helloTimer = setTimeout(() => {
         if (!state.cancelled && !state.ready) {
-          status("语音握手超时");
+          status("WebSocket 已连接，但未收到小智 Hello");
           stopVoice(state);
         }
-      },6000);
+      },12000);
     };
     state.ws.onmessage = (event) => {
       if (state.cancelled) return;
@@ -141,7 +175,12 @@ async function openVoice() {
         state.ready = true;
         send(state.ws,{type:"listen",state:"start",mode:"auto",session_id:message.session_id});
         state.processor.port.postMessage({type:"start"});
-        status("正在听，请说话");
+        state.stage = "streaming";
+        state.inputTimer = setTimeout(() => {
+          if (!state.cancelled && state.ready && state.sent === 0)
+            status("已建立语音会话，但麦克风没有输出音频帧");
+        },4500);
+        status("正在听，请说话（检测音量）");
       } else if (message.type === "stt" && typeof message.text === "string") {
         status("识别：" + message.text.slice(0,90));
       } else if (message.type === "tts") {
@@ -171,15 +210,16 @@ async function openVoice() {
         }
       }
     };
-    state.ws.onerror = () => { status("语音连接异常"); };
+    state.ws.onerror = () => { status("WebSocket 连接异常（请检查登录或路由）"); };
     state.ws.onclose = () => {
       if (state.cancelled) return;
       status("语音连接断开");
       stopVoice(state);
     };
   } catch (error) {
+    const step = state.stage;
     stopVoice(state);
-    throw error;
+    throw new Error(step + ": " + audioStartupError(error));
   }
 }
 
@@ -189,6 +229,7 @@ function stopVoice(state = current) {
   state.ready = false;
   clearTimeout(state.helloTimer);
   clearTimeout(state.resumeTimer);
+  clearTimeout(state.inputTimer);
   state.helloTimer = null;
   state.resumeTimer = null;
   try { state.processor?.port.postMessage({type:"stop"}); } catch {}
@@ -226,8 +267,8 @@ button?.addEventListener("click",async()=>{
     } else {
       setVoiceButton("开始语音", false);
     }
-  } catch {
-    status("语音启动失败：检查 HTTPS、麦克风权限和服务器");
+  } catch (error) {
+    status("语音启动失败：" + String(error?.message || "UnknownError").slice(0,96));
     stopVoice();
   } finally {
     button.disabled = false;
