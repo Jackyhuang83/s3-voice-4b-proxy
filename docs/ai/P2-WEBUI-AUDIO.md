@@ -1,6 +1,6 @@
 # P2-1 — XiaoZhi 原始 Opus iPhone WebUI 音频实现与 A04 隔离入口前置修复
 
-版本审计：2026-11-26。当前 P1 源码已合并、VPS 只读预检 PASS，但尚未真实部署、Safari 未验收。P2-1 功能权重 14，只有正式依赖和实机验收满足后才计入项目完成率。
+版本审计：2026-11-27。P1 已在真实 VPS 独立边车发布，iPhone Safari 基础文字聊天已实测通过；长思考/界面等生产热修复仍需与 GitHub 源码核对并同步。P2-1 功能权重 14，只有正式依赖和实机语音验收满足后才计入项目完成率。
 
 ## 复用优先：选型与锁定
 
@@ -16,6 +16,16 @@
 - 官方 Caddy 镜像的文件 capability 在 `cap_drop: ALL` 时可能导致启动 EPERM。新独立 Caddy 的生产模板现在按原 A04 的**既有成功基线**增加 `cap_add: [NET_BIND_SERVICE]`、`user: '1000:1000'`、no-new-privileges；合成 CI 容器 **真实启动相同权限组合**，而非只靠 `docker compose config`。
 - Auth 边车移出 Cloudflare Tunnel 所连接的前端网络，仅留 A03 后端；独立 Gateway 同时连接 front+A03。无主机端口，旧 A04 Caddyfile / compose / Cloudflare Tunnel / 4B 不改。
 - P1 的五 PR 上限不动，依照事先更新的路线图在 P2-1 一起交付必要的 P1 生产阻断修复。P1 真实部署和实际 Safari 验收仍不得跳过。
+
+
+## 2026-11-27 P2-1 语音交互补强（仍在同一 PR #39）
+
+- 源码发现的交互缺陷：原 AudioWorklet 在收到 `tts.start` 后仍向服务端上传麦克风帧，可将扬声器音频再次输入 ASR。现按官方 XiaoZhi Listening → Speaking 状态转换暂停麦克风；`tts.stop` 后等待已排队的最后一帧播放完毕，再在同一 WS 会话恢复麦克风。P2-2 仍负责真实延迟、抗抖动、尾音和打断系统性验收。
+- 主动停止/退出时，同时结束当前 WS、释放编码器和 MediaStreamTrack、取消握手/续录定时器、终止已排队的浏览器音频；不得误操作另一个已启动会话。
+- 语音按钮更新 `aria-label` / `aria-pressed` 而不覆写已有 SVG，复用当前 iPhone WebUI 的 24px 单色麦克风；小字状态栏替代大面积重复提示。
+- 新增 `tests/ai/test_webui_audio_ui.mjs`：模拟 hello 鉴权确认前不上传、Opus 帧、TTS 时禁止回录、尾音后恢复、手动停止、旧会话定时器失效和 SVG 保留，零真实网络/麦克风/LLM 费用。与已有 30 帧真实 libopus-wasm 测试并行作为 P2-1 专项 CI。
+- **生产部署门槛**：当前 VPS 的 `/opt/s3-voice-webui/src` 存在尚未同步到 GitHub main 的 P1 User-Agent、SSE、DOM、长思考及外观修改。绝不能直接用本 PR 的旧源树整体覆盖在线目录；部署前逐文件核对基线并备份，以增量方式合入 `audio-*.mjs`、Worklet、厂商 WASM、Auth 静态白名单/CSP 及 HTML 按钮。不得覆盖在用模型凭证或恢复旧版 HTML/CSS。
+- 源码测试、CI、真实公网 WSS/Opus、iPhone 10 分钟、4B 无干扰分别记录；**目前只有源码/自动化证据，没有真实 iPhone 语音通过的证据**。
 
 ## 分级验收
 
