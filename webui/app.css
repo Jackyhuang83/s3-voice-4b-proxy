@@ -98,3 +98,17 @@ select { background: var(--surface); color: var(--text); border: 1px solid var(-
   line-height: 1.45;
   color: var(--muted);
 }
+
+/* WEBUI P2 persistent microphone metrics */
+.voice-metrics {
+  display: block;
+  margin-top: 8px;
+  padding: 4px 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--text);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.voice-metrics[hidden] { display: none !important; }
