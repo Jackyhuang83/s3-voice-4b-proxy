@@ -55,7 +55,11 @@ async function openVoice() {
       track.addEventListener("ended",()=>{status("麦克风已关闭");stopVoice(state);},{once:true});
     });
     await state.ctx.resume();
+    if (state.cancelled) return;
     await state.ctx.audioWorklet.addModule("/webui/audio-worklet.js");
+    // Safari tab backgrounding or logout during Worklet loading must not
+    // create an orphan microphone processor or a new WebSocket afterwards.
+    if (state.cancelled) return;
     state.processor = new AudioWorkletNode(state.ctx,"s3-voice-mic");
     state.processor.port.onmessage = (event) => {
       if (state.cancelled || !state.ready || state.speaking || event.data?.type !== "frame") return;
