@@ -5,6 +5,7 @@ on:
       - 'webui/audio-*.mjs'
       - 'webui/audio-worklet.js'
       - 'webui/index.html'
+      - 'webui/app.css'
       - 'tools/ai/webui-vendor-opus.sh'
       - 'tools/ai/webui_text.py'
       - 'deploy/ai/webui/docker-compose.isolated*.yml'
@@ -67,6 +68,8 @@ jobs:
           assert all((t.ROOT/t.FILES[x][0]).is_file() for x in required)
           html=Path("webui/index.html").read_text()
           assert "voiceButton" in html and "audio-ui.mjs" in html
+          assert "s3-mic-icon" in html and "voiceStatus" in html
+          assert "模型请求经你的 VPS" not in html
           assert "wasm-unsafe-eval" in html and "wasm-unsafe-eval" in p.read_text()
           assert "audio-worklet.js" in Path("webui/audio-ui.mjs").read_text()
           assert "getUserMedia" in Path("webui/audio-ui.mjs").read_text()
