@@ -6,7 +6,30 @@ import { createXiaozhiCodec } from "./audio-opus.mjs";
 const button = document.getElementById("voiceButton");
 const statusText = document.getElementById("voiceStatus");
 const logout = document.getElementById("logoutBtn");
+const voiceMetrics = (() => {
+  const existing = document.getElementById("voiceMetrics");
+  if (existing) return existing;
+  const form = document.getElementById("chatForm");
+  if (!form) return null;
+  // Keep the live P1 HTML untouched. This is a separate, persistent display
+  // inside the composer; voiceStatus remains reserved for state transitions.
+  const node = document.createElement("div");
+  node.id = "voiceMetrics";
+  node.className = "voice-metrics";
+  node.hidden = true;
+  node.setAttribute("aria-live", "off");
+  form.appendChild(node);
+  return node;
+})();
 let current = null;
+
+function showMetrics(state, phase) {
+  if (!voiceMetrics || !state) return;
+  voiceMetrics.hidden = false;
+  voiceMetrics.textContent = phase + " · 已发送 " + state.sent +
+    " 帧 · 输入峰值 " + state.inputPeak + "%" +
+    (state.received ? " · 收到音频 " + state.received + " 帧" : "");
+}
 
 // Keep SVG microphone controls intact while updating accessible state.
 function setVoiceButton(label, pressed) {
@@ -52,6 +75,7 @@ async function openVoice() {
     ttsStartAt: null, firstAudioMs: null, audioPacketsInTurn: 0
   };
   current = state;
+  showMetrics(state, "麦克风连接中");
   try {
     // A user click started this call; AudioContext and getUserMedia are never
     // initialized on page load or from a background timer.
@@ -110,8 +134,7 @@ async function openVoice() {
         const now = Date.now();
         if (now - state.lastMeterMs >= 1200) {
           state.lastMeterMs = now;
-          status("麦克风已采集｜发送 " + state.sent +
-                 " 帧｜输入峰值 " + state.inputPeak + "%");
+          showMetrics(state, "正在听");
         }
       } catch {
         status("音频编码异常，已断开");
@@ -190,11 +213,13 @@ async function openVoice() {
           if (!state.cancelled && state.ready && state.sent === 0)
             status("已建立语音会话，但麦克风没有输出音频帧");
         },4500);
+        showMetrics(state, "正在听");
         status("正在听，请说话（检测音量）");
       } else if (message.type === "stt" && typeof message.text === "string") {
         state.lastSttAt = performance.now();
         state.asrWaitMs = state.lastVoiceAt === null ? null :
           Math.max(0, state.lastSttAt - state.lastVoiceAt);
+        showMetrics(state, "已识别，等待 AI");
         status("已识别｜结束录音→识别约 " +
                (state.asrWaitMs === null ? "未知" : (state.asrWaitMs / 1000).toFixed(1) + "s") +
                "｜等待 AI 回答");
@@ -211,6 +236,7 @@ async function openVoice() {
           state.processor?.port.postMessage({type:"stop"});
           const sttToTts = state.lastSttAt === null ? null :
             Math.max(0, state.ttsStartAt - state.lastSttAt);
+          showMetrics(state, "AI 回答中（麦克风暂停）");
           status("AI 正在回答｜识别→TTS启动 " +
                  (sttToTts === null ? "未知" : (sttToTts / 1000).toFixed(1) + "s"));
         }
@@ -218,6 +244,7 @@ async function openVoice() {
           state.ttsStopped = true;
           const ttsFirst = state.firstAudioMs === null ? "未收到音频帧" :
             (state.firstAudioMs / 1000).toFixed(1) + "s";
+          showMetrics(state, "正在播放尾音");
           status("TTS首个音频帧 " + ttsFirst +
                  "｜收到 " + state.audioPacketsInTurn + " 帧｜播放尾音中");
           // Resume only after the scheduled playback tail has finished.
@@ -229,6 +256,7 @@ async function openVoice() {
                 state.ws?.readyState !== WebSocket.OPEN) return;
             state.speaking = false;
             state.processor?.port.postMessage({type:"start"});
+            showMetrics(state, "正在听");
             status("可继续说话｜上一轮TTS首帧 " +
                    (state.firstAudioMs === null ? "未收到" :
                     (state.firstAudioMs / 1000).toFixed(1) + "s") +
@@ -273,6 +301,7 @@ function stopVoice(state = current) {
   try { state.codec?.free(); } catch {}
   if (state.ctx) state.ctx.close().catch(()=>{});
   if (current === state) {
+    showMetrics(state, "语音已停止");
     current = null;
     setVoiceButton("开始语音", false);
   }
