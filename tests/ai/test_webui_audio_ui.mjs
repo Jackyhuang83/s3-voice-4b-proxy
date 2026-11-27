@@ -125,6 +125,10 @@ const initialCount = ws.sent.length;
 assert.equal(initialCount,3);
 assert.ok(ws.sent.at(-1) instanceof Uint8Array);
 assert.match(status.textContent,/已发送|已采集|正在听/, "local mic frame telemetry must be available");
+ws.onmessage({data:JSON.stringify({type:"stt",text:"synthetic words never logged"})});
+assert.match(status.textContent,/已识别.*等待 AI 回答/, "ASR stage timing shown");
+assert.ok(!status.textContent.includes("synthetic words"),
+  "diagnostics must not display speech transcript");
 
 ws.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
 assert.equal(port.messages.at(-1).type,"stop");
@@ -132,9 +136,12 @@ port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount,"TTS must mute microphone to prevent echo");
 ws.onmessage({data:new Uint8Array([1,2]).buffer});
 assert.equal(sounds.length,1);
+assert.equal(ws.sent.length,initialCount, "TTS audio must not enable microphone");
 ws.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
 await new Promise(resolve=>setTimeout(resolve,360));
 assert.equal(port.messages.at(-1).type,"start","mic resumes after TTS playback tail");
+assert.match(status.textContent,/可继续说话.*上一轮TTS首帧.*音频 1 帧/,
+  "TTS first audio and packet count must remain visible after playback");
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount+1,"mic must resume on the same session");
 
