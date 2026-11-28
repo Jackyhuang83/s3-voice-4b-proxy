@@ -22,7 +22,9 @@ function reply(res, status, body, type="application/json; charset=utf-8") {
   });
   res.end(body);
 }
+const requestEvents = [];
 const server = createServer((req, res) => {
+  requestEvents.push([req.method, req.url]);
   const url = new URL(req.url, "http://127.0.0.1");
   const pathname = url.pathname;
   if (pathname === "/webui/api/session") {
@@ -111,7 +113,24 @@ try {
     await page.screenshot({path:`test-results/webui-v2-${width}.png`,fullPage:true});
     await page.locator("#messageInput").fill("你好");
     await page.locator("#sendBtn").click();
-    await page.locator(".message.assistant .bubble").getByText("浏览器测试答复").waitFor();
+    try {
+      await page.waitForFunction(
+        () => document.querySelector(".message.assistant .bubble")?.textContent === "浏览器测试答复",
+        {timeout:10000}
+      );
+    } catch (error) {
+      const dom = await page.evaluate(() => ({
+        messages:[...document.querySelectorAll(".message")].map(e=>e.textContent),
+        notice:document.getElementById("appNotice")?.textContent,
+        model:document.getElementById("modelSelect")?.value,
+        sendDisabled:document.getElementById("sendBtn")?.disabled,
+        inputDisabled:document.getElementById("messageInput")?.disabled,
+        chatHidden:document.getElementById("chatView")?.hidden
+      }));
+      throw Error("BROWSER_SSE_DIAG: " + JSON.stringify({
+        viewport:width,dom,requests:requestEvents.slice(-20),pageErrors:errors
+      }),{cause:error});
+    }
     await page.locator(".copy-reply").click();
     assert.equal(await page.evaluate(()=>window.__copiedText),"浏览器测试答复");
     await page.locator("#newChatBtn").click();
