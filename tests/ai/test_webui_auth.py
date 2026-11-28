@@ -142,7 +142,7 @@ class SecurityTests(unittest.TestCase):
                      "/webui/audio-ui.mjs?code=x", "/webui/unknown?code=x"):
             with self.subTest(path=path):
                 self.assertEqual(404, self.req("GET", path)[0])
-        self.assertEqual(403, self.req("POST", "/webui/api/login?code=x",
+        self.assertEqual(404, self.req("POST", "/webui/api/login?code=x",
                                         {"secret": OWNER}, {"Origin": ORIGIN})[0])
 
     def test_login_fail_closed_csrf_expiry_and_logout(self):
