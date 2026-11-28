@@ -9,7 +9,6 @@
   <title>S3-Voice AI 助手</title>
   <link rel="stylesheet" href="/webui/app.css">
   <script defer src="/webui/app.js"></script>
-  <script type="module" src="/webui/audio-ui.mjs"></script>
 </head>
 <body>
   <main class="layout">
@@ -79,12 +78,10 @@
             <div class="composer-actions">
               <span class="hint">Enter 发送 · Shift+Enter 换行</span>
               <div class="composer-buttons">
-                <button id="voiceButton" type="button" class="ghost" aria-label="开始语音" title="开始语音" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" class="s3-mic-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>
                 <button id="sendBtn" type="submit" class="primary send" aria-label="发送消息">发送</button>
               </div>
             </div>
           </form>
-          <p class="voice-status" id="voiceStatus" role="status" aria-live="polite">点击麦克风开始语音</p>
         </div>
       </section>
     </div>
