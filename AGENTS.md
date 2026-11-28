@@ -2,7 +2,7 @@
 
 Read and comply with [GDGS.md](./GDGS.md) before any planning, editing, PR creation, CI or deployment.
 
-**Mandatory reuse-only rule (2026-11-28):** Use existing official/maintained complete solutions directly. If a candidate cannot be used, evaluate other mature solutions; **never independently write or reimplement missing functionality, a compatibility layer, an adapter, a codec, a protocol, a WebVoice recording/playback/buffering/interrupt mechanism, or a replacement client** without the user's **explicit approval for that named exception**. If none fit, stop, report evidence, and request a decision. No autonomous fallback to custom development.
+**Mandatory mature-component reuse rule (2026-11-28, updated):** **「成熟功能直接复用，只编写现成组件之间确实缺少的适配代码。」** Use existing official/maintained mature complete solutions or components directly. If one does not fit, investigate others. **Permitted minimal adaptation:** source-proven interface wiring, configuration/data-format mapping or deployment glue strictly necessary to connect **two existing mature components**; document the upstream APIs, missing join, scope and acceptance tests before implementation. **Forbidden without explicit user authorization:** rewriting missing features, codecs, protocols, audio recording/playback/buffers/interrupt state machines, account systems, or using the word “adapter” to mask custom product development. If no mature solution exists, stop, report evidence, and ask the user for a decision.
 
 All product work follows GDGS P0–Pn roadmap, PR limits, acceptance levels, rollback and production change safety requirements. In particular, **S3-Voice WebUI is separate from the 4B device project**. Preserve the live WebUI v3, text chat, WebAuth, WebGateway, VoiceCore and model secrets.
 
