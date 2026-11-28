@@ -39,6 +39,27 @@ function setVoiceButton(label, pressed) {
 }
 
 function status(message) { if (statusText) statusText.textContent = message; }
+// "AI 思考中" is a user-facing waiting state after the server returns STT.
+// It includes model inference, server queueing and TTS preparation; the
+// browser cannot prove that an LLM is executing at every instant.
+function stopThinking(state) {
+  if (state.thinkingTimer !== null) clearInterval(state.thinkingTimer);
+  state.thinkingTimer = null;
+}
+function startThinking(state) {
+  stopThinking(state);
+  state.thinkingStartedAt = performance.now();
+  const refresh = () => {
+    if (state.cancelled || current !== state || !state.ready) return;
+    const elapsed = Math.floor(
+      Math.max(0, performance.now() - state.thinkingStartedAt) / 1000
+    );
+    showMetrics(state, "AI 思考中 · 已等待 " + elapsed + " 秒");
+    status("AI 思考中 · 已等待 " + elapsed + " 秒（含服务器处理与语音准备）");
+  };
+  refresh();
+  state.thinkingTimer = setInterval(refresh, 1000);
+}
 // Local-only microphone diagnostic. No speech content, IDs or secrets are logged.
 function inputLevel(frame) {
   if (!(frame instanceof Int16Array) || !frame.length) return 0;
@@ -72,7 +93,8 @@ async function openVoice() {
     speaking: false, sources: new Set(), helloTimer: null, resumeTimer: null,
     inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission",
     lastVoiceAt: null, lastSttAt: null, asrWaitMs: null,
-    ttsStartAt: null, firstAudioMs: null, audioPacketsInTurn: 0
+    ttsStartAt: null, firstAudioMs: null, audioPacketsInTurn: 0,
+    thinkingTimer: null, thinkingStartedAt: null
   };
   current = state;
   showMetrics(state, "麦克风连接中");
@@ -171,6 +193,8 @@ async function openVoice() {
         try {
           if (state.ttsStartAt !== null && state.firstAudioMs === null) {
             state.firstAudioMs = performance.now() - state.ttsStartAt;
+            showMetrics(state, "AI 语音播放中（麦克风暂停）");
+            status("AI 语音已到达，正在播放");
           }
           state.audioPacketsInTurn++;
           const floatSamples = state.codec.decodeFloat(new Uint8Array(event.data));
@@ -219,12 +243,10 @@ async function openVoice() {
         state.lastSttAt = performance.now();
         state.asrWaitMs = state.lastVoiceAt === null ? null :
           Math.max(0, state.lastSttAt - state.lastVoiceAt);
-        showMetrics(state, "已识别，等待 AI");
-        status("已识别｜结束录音→识别约 " +
-               (state.asrWaitMs === null ? "未知" : (state.asrWaitMs / 1000).toFixed(1) + "s") +
-               "｜等待 AI 回答");
+        startThinking(state);
       } else if (message.type === "tts") {
         if (message.state === "start") {
+          stopThinking(state);
           state.ttsStopped = false;
           state.speaking = true;
           state.ttsStartAt = performance.now();
@@ -236,8 +258,8 @@ async function openVoice() {
           state.processor?.port.postMessage({type:"stop"});
           const sttToTts = state.lastSttAt === null ? null :
             Math.max(0, state.ttsStartAt - state.lastSttAt);
-          showMetrics(state, "AI 回答中（麦克风暂停）");
-          status("AI 正在回答｜识别→TTS启动 " +
+          showMetrics(state, "AI 正在准备语音（麦克风暂停）");
+          status("AI 已生成回复，正在准备语音｜识别→TTS启动 " +
                  (sttToTts === null ? "未知" : (sttToTts / 1000).toFixed(1) + "s"));
         }
         if (message.state === "stop") {
@@ -285,6 +307,7 @@ function stopVoice(state = current) {
   clearTimeout(state.helloTimer);
   clearTimeout(state.resumeTimer);
   clearTimeout(state.inputTimer);
+  stopThinking(state);
   state.helloTimer = null;
   state.resumeTimer = null;
   try { state.processor?.port.postMessage({type:"stop"}); } catch {}
