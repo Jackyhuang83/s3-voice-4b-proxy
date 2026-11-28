@@ -81,18 +81,18 @@ def runtime_source_audit():
     # Use importlib/inspect in the existing container to check the actual
     # running Python module and pacing behavior, not merely the GitHub tree.
     code = (
-        "import importlib,inspect,json\\n"
-        "s=importlib.import_module('core.handle.sendAudioHandle')\\n"
-        "send=inspect.getsource(s.sendAudio)\\n"
-        "flow=inspect.getsource(s._send_audio_with_rate_control)\\n"
-        "stop=inspect.getsource(s.send_tts_message)\\n"
+        "import importlib,inspect,json\n"
+        "s=importlib.import_module('core.handle.sendAudioHandle')\n"
+        "send=inspect.getsource(s.sendAudio)\n"
+        "flow=inspect.getsource(s._send_audio_with_rate_control)\n"
+        "stop=inspect.getsource(s.send_tts_message)\n"
         "print(json.dumps(dict(frame_duration_ms=int(s.AUDIO_FRAME_DURATION),"
         "default_prebuffer_packets=int(s.PRE_BUFFER_COUNT),"
         "reads_native_delay='tts_audio_send_delay' in send,"
         "positive_delay_queues_all='if send_delay_ms > 0:' in flow and "
         "'rate_controller.add_audio(packet)' in flow,"
-        "stop_waits_for_audio='_wait_for_audio_completion(conn)' in stop)))\\n"
-    ).replace("\\\\n", "\\n")
+        "stop_waits_for_audio='_wait_for_audio_completion(conn)' in stop)))\n"
+    )
     done = subprocess.run(
         ["docker", "exec", "-w", "/opt/xiaozhi-esp32-server",
          "s3-voice-ai-server", "python3", "-c", code],
