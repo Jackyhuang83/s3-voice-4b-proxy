@@ -82,6 +82,29 @@ function send(ws, message) {
   return true;
 }
 
+// AudioBufferSourceNode 'ended' is the browser's playback-completion signal.
+// A tts.stop message only means the upstream finished streaming; it is NOT
+// proof the speaker has played all queued samples.
+function resumeAfterAudioTail(state) {
+  if (!state.ttsStopped || state.sources.size !== 0 || state.cancelled ||
+      current !== state || !state.ready) return;
+  clearTimeout(state.resumeTimer);
+  state.resumeTimer = setTimeout(() => {
+    state.resumeTimer = null;
+    if (state.cancelled || current !== state || !state.ready ||
+        !state.ttsStopped || state.sources.size !== 0 ||
+        state.ws?.readyState !== WebSocket.OPEN) return;
+    state.speaking = false;
+    state.ttsStopped = false;
+    state.processor?.port.postMessage({type:"start"});
+    showMetrics(state, "正在听");
+    status("可继续说话｜上一轮TTS首帧 " +
+           (state.firstAudioMs === null ? "未收到" :
+            (state.firstAudioMs / 1000).toFixed(1) + "s") +
+           "｜音频 " + state.audioPacketsInTurn + " 帧");
+  }, 80);
+}
+
 async function openVoice() {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia ||
       !window.AudioWorkletNode) throw new Error("需要 Safari 的 HTTPS 麦克风权限");
@@ -212,7 +235,10 @@ async function openVoice() {
             stopVoice(state);
             return;
           }
-          node.onended = () => state.sources.delete(node);
+          node.onended = () => {
+            state.sources.delete(node);
+            resumeAfterAudioTail(state);
+          };
           state.sources.add(node);
           node.start(next);
           state.playbackAt = next + audio.duration;
@@ -269,21 +295,10 @@ async function openVoice() {
           showMetrics(state, "正在播放尾音");
           status("TTS首个音频帧 " + ttsFirst +
                  "｜收到 " + state.audioPacketsInTurn + " 帧｜播放尾音中");
-          // Resume only after the scheduled playback tail has finished.
-          const remainingMs = Math.max(0, state.playbackAt - state.ctx.currentTime) * 1000;
-          clearTimeout(state.resumeTimer);
-          state.resumeTimer = setTimeout(() => {
-            state.resumeTimer = null;
-            if (state.cancelled || current !== state || !state.ready ||
-                state.ws?.readyState !== WebSocket.OPEN) return;
-            state.speaking = false;
-            state.processor?.port.postMessage({type:"start"});
-            showMetrics(state, "正在听");
-            status("可继续说话｜上一轮TTS首帧 " +
-                   (state.firstAudioMs === null ? "未收到" :
-                    (state.firstAudioMs / 1000).toFixed(1) + "s") +
-                   "｜音频 " + state.audioPacketsInTurn + " 帧");
-          }, Math.ceil(remainingMs) + 80);
+          // Wait for the *actual* last browser audio source's onended.
+          // Using AudioContext.currentTime alone can reopen the microphone
+          // before Safari's queued output has finished rendering.
+          resumeAfterAudioTail(state);
         }
       }
     };
