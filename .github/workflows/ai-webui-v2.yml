@@ -50,7 +50,13 @@ jobs:
           set -euo pipefail
           python3 -m py_compile tests/ai/test_webui_v2.py
           python3 -m py_compile tools/ai/webui_v2_publish.py tests/ai/test_webui_v2_publish.py
-          python3 -m unittest discover -s tests/ai -p 'test_webui_v2_publish.py' -v
+          # The v2 publisher intentionally pins v2 blobs and MUST NOT be tested
+          # against v3 assets. Verify it against the immutable reviewed v2 tree.
+          frozen=$(mktemp -d)
+          git archive 1efef94a918c497a418d19bb872e21fc54826317 -- \
+            webui/index.html webui/app.css webui/app.js \
+            tools/ai/webui_v2_publish.py tests/ai/test_webui_v2_publish.py | tar -x -C "$frozen"
+          (cd "$frozen" && python3 -m unittest discover -s tests/ai -p 'test_webui_v2_publish.py' -v)
           node --check webui/app.js
           node --check tests/ai/test_webui_v2.mjs
           node --check tests/ai/test_webui_v2_browser.mjs
