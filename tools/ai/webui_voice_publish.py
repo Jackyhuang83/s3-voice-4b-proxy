@@ -240,8 +240,9 @@ def release(mode):
                    "STABLE" if blob(original) == BEFORE_BLOB else "CUSTOM"),
                   flush=True)
             return
+        rollback_folder = None
         if mode == "rollback":
-            _, candidate = recover()
+            rollback_folder, candidate = recover()
             if blob(original) != AFTER_BLOB:
                 raise Blocked("ROLLED_BACK_SOURCE_UNEXPECTED")
             backup_data = candidate
@@ -269,8 +270,7 @@ def release(mode):
                 raise Blocked("PROTECTED_BASELINE_CHANGED")
             if mode == "rollback":
                 # Mark the snapshot used so another rollback cannot overwrite a new release.
-                folder, _ = recover()
-                (folder / "rolled-back").touch(mode=0o600, exist_ok=False)
+                (rollback_folder / "rolled-back").touch(mode=0o600, exist_ok=False)
                 print("WEBUI_VOICE_MANUAL_ROLLBACK_PASS", flush=True)
             else:
                 print("WEBUI_VOICE_AUDIO_ONLY_ACTIVE_PASS", flush=True)
