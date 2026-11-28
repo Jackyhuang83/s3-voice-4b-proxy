@@ -133,8 +133,18 @@ try {
     }
     await page.locator(".copy-reply").click();
     assert.equal(await page.evaluate(()=>window.__copiedText),"浏览器测试答复");
+    await page.screenshot({path:`test-results/webui-v2-${width}-chat.png`,fullPage:true});
     await page.locator("#newChatBtn").click();
     assert.equal(await page.locator(".message").count(),0);
+    await page.locator("#welcome").waitFor({state:"visible"});
+    await page.locator("#messageInput").fill("再次提问");
+    await page.locator("#sendBtn").click();
+    await page.waitForFunction(
+      () => document.querySelector(".message.assistant .bubble")?.textContent === "浏览器测试答复",
+      null, {timeout:10000}
+    );
+    assert.equal(await page.locator(".message.assistant").count(),1,
+      "second question must render a fresh assistant turn after welcome removal");
     assert.deepEqual(errors,[],`page errors at ${width}`);
     snapshots.push(`${width}px: no overflow, ${state.sidebarVisible?"desktop nav":"mobile nav"}, SSE/copy/reset PASS`);
     await context.close();
