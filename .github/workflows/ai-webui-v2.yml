@@ -1,0 +1,88 @@
+name: S3-Voice WebUI v2 UI-only regression
+on:
+  pull_request:
+    paths:
+      - 'webui/index.html'
+      - 'webui/app.css'
+      - 'webui/app.js'
+      - 'tests/ai/test_webui_v2.py'
+      - 'tests/ai/test_webui_v2.mjs'
+      - 'tests/ai/test_webui_v2_browser.mjs'
+      - 'tools/ai/webui_v2_publish.py'
+      - 'tests/ai/test_webui_v2_publish.py'
+      - 'docs/ai/WEBUI-V2-*.md'
+      - 'docs/ai/UI-V2-*.md'
+      - '.github/workflows/ai-webui-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ui-v2-contract:
+    name: UI-only DOM, owner session, model SSE, keyboard and voice preservation
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Confirm this PR cannot modify voice, proxy, Auth, Caddy or deployment
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD | while IFS= read -r name; do
+            case "$name" in
+              docs/ai/WEBUI-V2-*.md|docs/ai/UI-V2-*.md|webui/index.html|webui/app.css|webui/app.js|tests/ai/test_webui_v2.py|tests/ai/test_webui_v2.mjs|tests/ai/test_webui_v2_browser.mjs|tests/ai/test_webui_v2_publish.py|tools/ai/webui_v2_publish.py|.github/workflows/ai-webui-v2.yml) ;;
+              *) echo "WEBUI_V2_SCOPE_FAIL: $name"; exit 1 ;;
+            esac
+          done
+          echo 'WEBUI_V2_SCOPE_PASS: UI/docs/tests only; A03 A04 Auth Caddy ESP32 unchanged'
+      - name: Compile and verify preserved UI DOM, CSP and mobile layout contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/ai/test_webui_v2.py
+          python3 -m py_compile tools/ai/webui_v2_publish.py tests/ai/test_webui_v2_publish.py
+          python3 -m unittest discover -s tests/ai -p 'test_webui_v2_publish.py' -v
+          node --check webui/app.js
+          node --check tests/ai/test_webui_v2.mjs
+          node --check tests/ai/test_webui_v2_browser.mjs
+          python3 -m unittest discover -s tests/ai -p 'test_webui_v2.py' -v
+      - name: Execute mocked user chat, SSE reply copy and mobile keyboard
+        run: node tests/ai/test_webui_v2.mjs
+      - name: Install CJK glyph coverage in ephemeral CI runner screenshots only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -yq --no-install-recommends fonts-noto-cjk
+          fc-cache -f
+      - name: Real Chrome renders 375/430/768/1280 widths with mocked same-origin API
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "${CHROME_BIN:-/usr/bin/google-chrome}"
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright-core@1.57.0
+          node tests/ai/test_webui_v2_browser.mjs
+      - name: Keep isolated visual screenshots for design review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webui-v2-chrome-viewport-screenshots
+          path: test-results/webui-v2-*.png
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Recheck existing owner security and 16k Opus browser contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+          python3 -m unittest discover -s tests/ai -p 'test_webui_text.py' -v
+          node tests/ai/test_webui_audio_ui.mjs
+          echo 'WEBUI_V2_BROADER_REGRESSION_PASS: original voice/text/security unaffected'
