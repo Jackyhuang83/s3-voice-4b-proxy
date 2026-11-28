@@ -238,12 +238,29 @@ ws2.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
 await new Promise(resolve=>setTimeout(resolve,190));
 assert.equal(port2.messages.length,countBeforeAck,
   "late stop from aborted response must not create duplicate mic restart");
+// A source that was already queued before abort can still deliver a binary
+// packet AFTER the official tts.stop acknowledgment; never play it.
+const lateAfterAck=sounds.length;
+ws2.onmessage({data:new Uint8Array([1,2]).buffer});
+assert.equal(sounds.length,lateAfterAck,
+  "stale audio remains suppressed even after abort acknowledgment");
 const sentAfterInterrupt=ws2.sent.length;
 port2.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws2.sent.length,sentAfterInterrupt+1,
   "WebVoice mic streams on same session after interruption");
+// A genuine next TTS start re-enables audio decoding for the next turn.
+ws2.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
+ws2.onmessage({data:new Uint8Array([1,2]).buffer});
+assert.equal(sounds.length,lateAfterAck+1,
+  "fresh TTS turn must accept new Opus frames");
+const freshSound=sounds.at(-1);
+ws2.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
+freshSound.onended();
+await new Promise(resolve=>setTimeout(resolve,125));
+assert.equal(port2.messages.at(-1).type,"start",
+  "normal mic recovery still works after interrupted turn");
 await voiceButton.listeners.click();
-assert.equal(ws2.closed,true,"second click while listening stops the session");
+assert.equal(ws2.closed,true,"click while listening closes WebVoice session");
 const countStop=port2.messages.length;
 await new Promise(resolve=>setTimeout(resolve,170));
 assert.equal(port2.messages.length,countStop,"stopped session must not restart mic");
