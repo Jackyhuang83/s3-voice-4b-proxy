@@ -88,3 +88,14 @@ P0=10/10，P1 尚未完成既定正式阶段验收，P2=0/25（P2-1 在实机验
 3. 独立监控栏持续保留帧数/峰值，录音帧周期更新不得覆盖「AI 思考中」；退出、断线和手动停止需清理计时器。
 4. 如果没有收到 STT 就不能显示「AI 思考中」：那可能是 ASR/VAD 未生成识别结果。测试须覆盖未识别不能虚报、计时更新、收到 TTS 取消计时、音频首包/退出清理。
 5. 当前未发布到 VPS：只能在最新 CI 全部 PASS、保留原文件备份并校验固定源码 Git Blob 后通过单文件更新。真实 Safari 验收仍是 P2-1 必须的独立门槛。
+
+
+## 2026-11-28 WebUI 语音尾音修复 + 单文件发布验收
+
+**范围**：用户已将 ESP32-S3 4B 项目完全移出当前 S3-Voice。此工作仅更新 WebUI 浏览器音频模块，不修 4B 设备 A04 私有身份网关，不修改 A03/A04、Cloudflare、UI v3 HTML/CSS/JS、模型或凭据。
+
+- **问题机制**：WebUI 旧版收到 `tts.stop` 后，按预计的 `AudioContext.currentTime + 80ms` 恢复录音，而 Web Audio 实际播放队列可能尚未完成，存在收回声和尾音被误当成输入的风险。依据 Web Audio 标准，新的 `audio-ui.mjs` 在 `AudioBufferSourceNode.onended` 确认所有本轮排队的音频源确实播放结束后恢复麦克风；手动停止仍立即终止音频/WS 和释放资源。保留已有的 16k/60ms Opus、AudioWorklet、语音阶段指标及 UI v3 视觉交互。
+- **安全隔离**：新 `tools/ai/webui_voice_publish.py` 只原子替换 `/opt/s3-voice-webui/src/webui/audio-ui.mjs`。发布源锁定 GitHub 不可变提交 `9daabddb90f817c3ad4f418089f07f85dd1e5588`，Git blob SHA-1 为 `f8bf11ca3a852b1474dd827c250d2b654ade53a5`。仅在原文件匹配 UI v3 稳定版 blob `65d2dfc95000f84c67d6b121955cf9801dc1400a` 时部署；线上存在本地修改即停止。
+- **保护及回退**：读取 4 个已运行容器的 ID/StartedAt，验证 WebUI Auth 的只读源码挂载，无公开 host ports；所有其他 WebUI 文件哈希保持不变。发布前从现有独立 WebUI Gateway/Auth 内部验证 UI、文字脚本、会话 API 和未登录 WebSocket 拒绝状态；保存私有原文件备份后原子更新，再读取 HTTP 实际响应 SHA-256 验证，无容器重启。任何应用/验证失败自动恢复原始字节；可单独执行 `rollback` 并留下审计快照。
+- **CI**：`tests/ai/test_webui_voice_publish.py` 覆盖正常应用、重复执行、人工回滚、发布后检查失败自动回滚；`tests/ai/test_webui_audio_ui.mjs` 覆盖结束事件驱动、未播完不恢复收音、手动停止。Docker/网络均由 mock 代替，不触发生产 VPS。
+- **真实验收门槛**：GitHub 最新 CI 通过 + 在 VPS 成功执行只更改音频前端模块 + Safari 实际连续对话。上述任何一项未完成，不得标注生产声音已修复。4B 安全诊断与 WebUI 语音无关，不可成为前端发布绕过条件，亦不在此 PR 修改。
