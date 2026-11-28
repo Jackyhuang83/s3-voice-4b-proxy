@@ -1,0 +1,59 @@
+name: S3-Voice WebUI v2 UI-only regression
+on:
+  pull_request:
+    paths:
+      - 'webui/index.html'
+      - 'webui/app.css'
+      - 'webui/app.js'
+      - 'tests/ai/test_webui_v2.py'
+      - 'tests/ai/test_webui_v2.mjs'
+      - 'docs/ai/WEBUI-V2-*.md'
+      - '.github/workflows/ai-webui-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ui-v2-contract:
+    name: UI-only DOM, owner session, model SSE, keyboard and voice preservation
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Confirm this PR cannot modify voice, proxy, Auth, Caddy or deployment
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD | while IFS= read -r name; do
+            case "$name" in
+              docs/ai/WEBUI-V2-*.md|webui/index.html|webui/app.css|webui/app.js|tests/ai/test_webui_v2.py|tests/ai/test_webui_v2.mjs|.github/workflows/ai-webui-v2.yml) ;;
+              *) echo "WEBUI_V2_SCOPE_FAIL: $name"; exit 1 ;;
+            esac
+          done
+          echo 'WEBUI_V2_SCOPE_PASS: UI/docs/tests only; A03 A04 Auth Caddy ESP32 unchanged'
+      - name: Compile and verify preserved UI DOM, CSP and mobile layout contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/ai/test_webui_v2.py
+          node --check webui/app.js
+          node --check tests/ai/test_webui_v2.mjs
+          python3 -m unittest discover -s tests/ai -p 'test_webui_v2.py' -v
+      - name: Execute mocked user chat, SSE reply copy and mobile keyboard
+        run: node tests/ai/test_webui_v2.mjs
+      - name: Recheck existing owner security and 16k Opus browser contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests/ai -p 'test_webui_auth.py' -v
+          python3 -m unittest discover -s tests/ai -p 'test_webui_text.py' -v
+          node tests/ai/test_webui_audio_ui.mjs
+          echo 'WEBUI_V2_BROADER_REGRESSION_PASS: original voice/text/security unaffected'
