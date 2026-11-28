@@ -18,13 +18,13 @@ import tempfile
 import urllib.request
 
 REPO = "Jackyhuang83/s3-voice-4b-proxy"
-SOURCE_COMMIT = "be32362c3a258d1fed1a608a17a6b0b837118ed1"
+SOURCE_COMMIT = "b7e777f352dbf4fef8036b8d39257f43b1ace3d9"
 FILE_NAME = "audio-ui.mjs"
 BEFORE_BLOB = "65d2dfc95000f84c67d6b121955cf9801dc1400a"
 # Combines the already-reviewed P2-1 tail fix and P2-2 interrupt fix.
 # Either the original UI v3 or the P2-1-only release may be updated.
 INTERMEDIATE_BLOB = "f8bf11ca3a852b1474dd827c250d2b654ade53a5"
-AFTER_BLOB = "8a81e78dd5312fd37077c3d1bb95a663ea006d6b"
+AFTER_BLOB = "38497205304a26cab01049300191781d1c489897"
 BASE = Path("/opt/s3-voice-webui")
 SRC = BASE / "src"
 VOICE = SRC / "webui" / FILE_NAME
@@ -161,6 +161,7 @@ def pinned_voice():
     for expected in ("resumeAfterAudioTail", "node.onended", "ttsStopped",
                      "getUserMedia", "/webui/ws", "clearTimeout",
                      "interruptSpeaking", "awaitAbortStop",
+                     "ignoreAudioUntilTtsStart",
                      'reason:"user_interruption"'):
         if expected not in script:
             raise Blocked("VOICE_SOURCE_CONTRACT_FAILED")
