@@ -207,7 +207,12 @@ def owner_probe():
     code = r"""
 import json, os, urllib.error, urllib.request
 url = "http://s3-voice-webui-gateway:8080"
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+opener = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), NoRedirect()
+)
 def fetch(path, method="GET", payload=None, headers=None):
     req=urllib.request.Request(url+path, data=payload, method=method, headers=headers or {})
     try:
@@ -219,7 +224,11 @@ assert fetch("/webui/api/session")[0] == 200
 assert json.loads(fetch("/webui/api/session")[2]) == {"authenticated":False}
 assert fetch("/webui/")[0] == 200
 assert fetch("/webui/api/models")[0] == 401
-assert fetch("/")[0] == 403
+root_status, root_headers, _ = fetch("/")
+assert root_status == 302 and root_headers.get("Location") == "/webui/"
+query_status, query_headers, query_body = fetch("/webui/?callback=synthetic")
+assert query_status == 200 and b"loginView" in query_body
+assert fetch("/webui/api/models?callback=synthetic")[0] == 404
 assert fetch("/xiaozhi/ota/no-public-path")[0] == 403
 h={"Origin":os.environ["S3_WEBUI_ORIGIN"],"Content-Type":"application/json"}
 bad=fetch("/webui/api/login","POST",b'{"secret":"invalid"}',h)
@@ -231,7 +240,7 @@ assert code==200
 cookie=headers.get("Set-Cookie","").split(";",1)[0]
 code,_,models=fetch("/webui/api/models",headers={"Cookie":cookie})
 assert code==200 and json.loads(models)=={"models":[]}
-print("WEBUI_PILOT_PRIVATE_HTTP_PASS: login, 401, 403, static files; zero paid model calls")
+print("WEBUI_PILOT_PRIVATE_HTTP_PASS: login, 302, 401, 403, strict API and static callback; zero paid model calls")
 """
     run(["docker", "exec", "-i", NAMES[0], "python3", "-B", "-c", code])
 
