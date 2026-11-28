@@ -1,6 +1,8 @@
 "use strict";
 (() => {
   const el = (id) => document.getElementById(id);
+  // Keep the detached welcome DOM node for later reset/logout restoration.
+  const welcomeNode = el("welcome");
   const history = [];
   let busy = false;
   let noticeTimer;
@@ -21,7 +23,7 @@
     el("connectionStatus").textContent = authorized ? "已安全连接" : "未连接";
     if (!authorized) {
       history.length = 0;
-      el("messages").replaceChildren(el("welcome"));
+      el("messages").replaceChildren(welcomeNode);
       el("modelSelect").replaceChildren();
     }
   }
@@ -44,7 +46,7 @@
   }
 
   function addMessage(role, value) {
-    el("welcome").remove();
+    welcomeNode.remove();
     const wrapper = document.createElement("div");
     wrapper.className = "message " + role;
     const label = document.createElement("span");
@@ -95,7 +97,7 @@
     if (currentAbort) currentAbort.abort();
     currentAbort = null;
     history.length = 0;
-    el("messages").replaceChildren(el("welcome"));
+    el("messages").replaceChildren(welcomeNode);
     busy = false;
     el("sendBtn").disabled = el("modelSelect").options.length === 0;
     el("messageInput").disabled = false;
