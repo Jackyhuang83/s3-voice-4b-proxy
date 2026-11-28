@@ -1,0 +1,97 @@
+name: WebUI mature upstream isolated product pilot
+on:
+  pull_request:
+    paths:
+      - 'deploy/ai/webui/upstream/**'
+      - 'docs/ai/WEBUI-ROADMAP.md'
+      - 'webui/index.html'
+      - 'webui/audio-ui.mjs'
+      - 'webui/audio-opus.mjs'
+      - 'webui/audio-worklet.js'
+      - '.github/workflows/webui-upstream-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  upstream-contract:
+    name: GDGS: no self-written WebVoice and official image contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm unused custom WebVoice removed in migration candidate only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in webui/audio-ui.mjs webui/audio-opus.mjs webui/audio-worklet.js; do
+            test ! -e "$path"
+          done
+          ! grep -q 'audio-ui.mjs' webui/index.html
+          ! grep -q 'id="voiceButton"' webui/index.html
+          test -f webui/app.js
+          test -f webui/app.css
+          test -f tools/ai/webui_auth.py
+          test -f tools/ai/webui_text.py
+          echo 'WEBUI_REPLACEMENT_SOURCE_CLEAN_PASS: old custom WebVoice removed; stable browser text preserved on candidate'
+      - name: Check official-only compose and strict loopback binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OPENWEBUI_SECRET_KEY="CI_FAKE_NOT_A_REAL_SECRET_0123456789abcdefghijklmnopqrstuvwxyz"
+          file=deploy/ai/webui/upstream/docker-compose.openwebui.pilot.yml
+          docker compose -f "$file" config --format json >/tmp/openwebui-official-ci.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('/tmp/openwebui-official-ci.json').read_text())
+          assert set(cfg['services'])=={'upstream-webui'}
+          s=cfg['services']['upstream-webui']
+          assert s['image']=='ghcr.io/open-webui/open-webui:v0.12.3-slim'
+          assert s['ports'][0]['host_ip']=='127.0.0.1'
+          assert s['ports'][0]['published']=='18173'
+          assert s['restart']=='no'
+          assert 's3-upstream-openwebui-eval'==s['container_name']
+          assert s['mem_limit'] <= 1073741824
+          assert s['security_opt']==['no-new-privileges:true']
+          print('WEBUI_UPSTREAM_COMPOSE_GUARDS_PASS: official release, 127.0.0.1 only, bounded pilot, no production routes')
+          PY
+  upstream-runtime:
+    name: Official Open WebUI slim startup and health (CI-only disposable Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run upstream unchanged and assert health (NO user VPS access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=deploy/ai/webui/upstream/docker-compose.openwebui.pilot.yml
+          export OPENWEBUI_SECRET_KEY="CI_FAKE_NOT_A_REAL_SECRET_0123456789abcdefghijklmnopqrstuvwxyz"
+          cleanup() {
+            docker compose -f "$file" down -v --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker compose -f "$file" pull
+          docker compose -f "$file" up -d --no-build
+          passed=0
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:18173/health >/tmp/openwebui-upstream-health.json; then
+              passed=1
+              break
+            fi
+            sleep 4
+          done
+          if test "$passed" != 1; then
+            docker compose -f "$file" ps -a || true
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          response=json.loads(Path('/tmp/openwebui-upstream-health.json').read_text())
+          assert isinstance(response,dict)
+          print('WEBUI_UPSTREAM_OFFICIAL_RUNTIME_PASS: official unchanged Docker image health 200')
+          PY
+          test -z "$(docker ps --format '{{.Names}}' --filter 'name=^s3-voice-ai-')"
+          test -z "$(docker ps --format '{{.Names}}' --filter 'name=^s3-voice-webui-')"
+          echo 'WEBUI_UPSTREAM_NO_LEGACY_CONTAINER_CREATED_PASS'
