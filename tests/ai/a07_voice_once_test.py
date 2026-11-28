@@ -61,6 +61,10 @@ active = "active send_delay=60ms, original backup present"
 obs, err, out = fake_release("apply", [baseline, active])
 assert err is None and obs == ["status", "apply", "status"]
 assert "A07_VOICE_PACING_60MS_ACTIVE_PASS" in out
+assert "A07_CHECK_1_4_DOCKER_CONTAINERS_START" in out
+assert "A07_CHECK_2_4_AUDIO_ENGINE_READ_ONLY_START" in out
+assert "A07_CHECK_3_4_BACKUP_AND_A03_ONLY_RESTART_START" in out
+assert "A07_CHECK_4_4_FINAL_AUDIO_CONFIG_AND_CONTAINERS_START" in out
 obs, err, out = fake_release("apply", [active])
 assert err is None and obs == ["status"]
 assert "A07_VOICE_PACING_ALREADY_ACTIVE_PASS" in out
