@@ -48,13 +48,63 @@ def ensure_baseline():
     if not CFG.is_file() or not IDENTITY.is_file():
         raise ValueError("A03/A04 private baseline missing")
     cfg = CFG.read_text()
-    for expected in ("  ASR: VoskASR\n", "  LLM: GenericGPTLLM\n", "  TTS: EdgeTTS\n"):
-        if cfg.count(expected) != 1:
-            raise ValueError("A05/A06 baseline changed")
+    # API provider and model are deliberately not pinned. Preserve the exact
+    # running config bytes; only require a usable existing module selection.
+    if cfg.count("selected_module:\n") != 1:
+        raise ValueError("missing or ambiguous module selection")
+    for kind in ("ASR", "LLM", "TTS"):
+        if len(re.findall(rf"(?m)^  {kind}:[ \\t]*[^#\\s]+", cfg)) != 1:
+            raise ValueError("missing or ambiguous module selection")
     ident = json.loads(IDENTITY.read_text())
     if ident.get("mode") != "hardware":
         raise ValueError("real Waveshare A07 admission not active")
     return cfg
+
+
+# Runtime source inspection: uses the official module already inside A03;
+# reads metadata ONLY, never YAML, credentials, user audio or conversation.
+def check_runtime_metadata(info):
+    expected = {
+        "frame_duration_ms": 60,
+        "default_prebuffer_packets": 5,
+        "reads_native_delay": True,
+        "positive_delay_queues_all": True,
+        "stop_waits_for_audio": True,
+    }
+    if not isinstance(info, dict) or any(info.get(k) != v for k, v in expected.items()):
+        raise ValueError("unexpected XiaoZhi audio implementation")
+    return info
+
+
+def runtime_source_audit():
+    # The pinned v0.9.8 image has source at /opt/xiaozhi-esp32-server.
+    # Use importlib/inspect in the existing container to check the actual
+    # running Python module and pacing behavior, not merely the GitHub tree.
+    code = (
+        "import importlib,inspect,json\\n"
+        "s=importlib.import_module('core.handle.sendAudioHandle')\\n"
+        "send=inspect.getsource(s.sendAudio)\\n"
+        "flow=inspect.getsource(s._send_audio_with_rate_control)\\n"
+        "stop=inspect.getsource(s.send_tts_message)\\n"
+        "print(json.dumps(dict(frame_duration_ms=int(s.AUDIO_FRAME_DURATION),"
+        "default_prebuffer_packets=int(s.PRE_BUFFER_COUNT),"
+        "reads_native_delay='tts_audio_send_delay' in send,"
+        "positive_delay_queues_all='if send_delay_ms > 0:' in flow and "
+        "'rate_controller.add_audio(packet)' in flow,"
+        "stop_waits_for_audio='_wait_for_audio_completion(conn)' in stop)))\\n"
+    ).replace("\\\\n", "\\n")
+    done = subprocess.run(
+        ["docker", "exec", "-w", "/opt/xiaozhi-esp32-server",
+         "s3-voice-ai-server", "python3", "-c", code],
+        capture_output=True, text=True, timeout=20, check=False
+    )
+    if done.returncode:
+        raise ValueError("runtime source audit unavailable")
+    try:
+        info = json.loads(done.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError, TypeError):
+        raise ValueError("runtime source metadata unavailable") from None
+    return check_runtime_metadata(info)
 
 
 def private_write(path, data):
@@ -108,6 +158,7 @@ def apply():
     if TRIAL.exists():
         raise ValueError("pacing snapshot already exists: use status or rollback")
     candidate = render(orig)
+    runtime_source_audit()  # Stop before snapshot/config change if unexpected image.
     check_live()
     TRIAL.mkdir(mode=0o700)
     private_write(BACKUP, orig)
@@ -127,7 +178,7 @@ def apply():
         except Exception:
             print("A07_PACING_RECOVERY_UNVERIFIED: original configuration restored but health failed")
         raise
-    print("A07_PACING_OK: official 60ms first-to-last Opus pacing active; A05/A06 and A04 OTA/WSS preserved")
+    print("A07_PACING_OK: native 60ms config applied, A03 restarted; audio playback still requires 4B acceptance")
     print("A07_PACING_OK: private original configuration backed up; rollback command available")
 
 
@@ -155,6 +206,8 @@ def rollback():
 
 def status():
     cfg = ensure_baseline()
+    info = runtime_source_audit()
+    print("A07_PACING_ENGINE_PASS: official 60ms frame / 5 direct default prebuffer; configurable full-frame pacing")
     if not TRIAL.is_dir():
         print("A07_PACING_STATUS: no active trial")
         return
