@@ -99,17 +99,31 @@ def read_catalog(env):
     return validate_catalog(json.loads(pathlib.Path(path).read_text(encoding="utf-8")))
 
 
+def static_target(request_path):
+    """Allow Access callback query strings only on the public landing page.
+
+    Other static paths and all owner/API/auth routes stay exact; a query string
+    cannot widen a privileged route, reveal a token, or become a file path.
+    """
+    if request_path == "/webui" or request_path in FILES:
+        return request_path
+    if request_path.startswith(("/webui?", "/webui/?")):
+        return request_path.split("?", 1)[0]
+    return None
+
+
 def serve_static(handler):
-    if handler.path == "/webui":
+    target = static_target(handler.path)
+    if target == "/webui":
         handler.send_response(302)
         handler.send_header("Location", "/webui/")
         handler.send_header("Cache-Control", "no-store")
         handler.send_header("Content-Length", "0")
         handler.end_headers()
         return
-    if handler.path not in FILES:
+    if target is None or target not in FILES:
         return handler.deny(404)
-    relative, mime = FILES[handler.path]
+    relative, mime = FILES[target]
     try:
         content = (ROOT / relative).read_bytes()
     except OSError:
