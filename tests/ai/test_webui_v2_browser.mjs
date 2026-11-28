@@ -116,7 +116,7 @@ try {
     try {
       await page.waitForFunction(
         () => document.querySelector(".message.assistant .bubble")?.textContent === "浏览器测试答复",
-        {timeout:10000}
+        null, {timeout:10000}
       );
     } catch (error) {
       const dom = await page.evaluate(() => ({
