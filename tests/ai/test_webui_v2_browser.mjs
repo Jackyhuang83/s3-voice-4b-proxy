@@ -36,7 +36,7 @@ const server = createServer((req, res) => {
   if (pathname === "/webui/api/chat" && req.method === "POST") {
     res.writeHead(200,{"Content-Type":"text/event-stream; charset=utf-8",
       "Cache-Control":"no-store"});
-    return res.end('data: {"delta":"浏览器测试答复"}\\n\\ndata: [DONE]\\n\\n');
+    return res.end('data: {"delta":"浏览器测试答复"}\n\ndata: [DONE]\n\n');
   }
   if (pathname === "/webui/vendor/libopus/dist/index.js") {
     // Codec has its own real Opus CI. Layout test does not use microphone.
