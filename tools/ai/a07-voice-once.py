@@ -111,7 +111,10 @@ def release(mode="apply"):
                 fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 with os.fdopen(fd, "wb") as stream:
                     stream.write(data)
+            print("A07_CHECK_1_4_DOCKER_CONTAINERS_START", flush=True)
             before = protected_fingerprint()
+            print("A07_CHECK_1_4_DOCKER_CONTAINERS_PASS", flush=True)
+            print("A07_CHECK_2_4_AUDIO_ENGINE_READ_ONLY_START", flush=True)
             initial = status_kind(helper_call(root, "status"))
             print("A07_VOICE_RUNTIME_PREFLIGHT_PASS", flush=True)
             if mode == "rollback":
@@ -132,10 +135,13 @@ def release(mode="apply"):
             if initial != "baseline":
                 raise SafeStop("PREVIOUS_TRIAL_REQUIRES_REVIEW")
             print("A07_VOICE_PRODUCTION_BASELINE_PASS", flush=True)
+            print("A07_CHECK_3_4_BACKUP_AND_A03_ONLY_RESTART_START", flush=True)
             applied = False
             try:
                 helper_call(root, "apply")
                 applied = True
+                print("A07_CHECK_3_4_BACKUP_AND_A03_ONLY_RESTART_PASS", flush=True)
+                print("A07_CHECK_4_4_FINAL_AUDIO_CONFIG_AND_CONTAINERS_START", flush=True)
                 final = status_kind(helper_call(root, "status"))
                 if final != "active":
                     raise SafeStop("PACING_NOT_ACTIVE_AFTER_APPLY")
