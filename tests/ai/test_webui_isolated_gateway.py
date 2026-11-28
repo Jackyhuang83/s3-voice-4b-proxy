@@ -101,6 +101,31 @@ class TwoGatewayIsolation(unittest.TestCase):
         self.assertEqual(403, call(LEGACY_PORT, "GET", "/")[0])
         self.assertEqual(401, call(WEBUI_PORT, "GET", "/webui/api/models")[0])
 
+    def test_04_access_callback_root_redirect_and_query_landing(self):
+        # The new gateway, not the original A04 or private auth container,
+        # owns the public root redirect after Cloudflare Access OTP.
+        status, hdr, body = call(WEBUI_PORT, "GET", "/")
+        self.assertEqual(302, status)
+        self.assertEqual("/webui/", hdr.get("Location"))
+        self.assertNotIn(b"access denied", body.lower())
+        for path in ("/webui/", "/webui/?CF_Authorization=synthetic",
+                     "/webui?callback=synthetic"):
+            with self.subTest(path=path):
+                status, hdr, body = call(WEBUI_PORT, "GET", path)
+                if path.startswith("/webui?"):
+                    self.assertEqual(302, status)
+                    self.assertEqual("/webui/", hdr.get("Location"))
+                else:
+                    self.assertEqual(200, status)
+                    self.assertIn("text/html", hdr.get("Content-Type", ""))
+                    self.assertIn(b'id="loginView"', body)
+        # No broad rewrite: old A04, private API, OTA, static variations
+        # and unknown routes stay inaccessible.
+        for path in ("/invalid", "/webui/api/models?callback=synthetic",
+                     "/internal/ws-auth?callback=synthetic", "/xiaozhi/v1/"):
+            self.assertEqual(403, call(WEBUI_PORT, "GET", path)[0])
+        self.assertEqual(403, call(LEGACY_PORT, "GET", "/")[0])
+
     def test_04_legacy_ota_denies_wrong_identity_and_validates_right_one(self):
         data = {
             "application": {"name": "ci", "version": "0.1"},
