@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python/Bash syntax and safe strict Caddy transformation
         run: |
-          python3 -m py_compile tools/ai/a07-pair.py tests/ai/a07_pair_test.py tests/ai/a07_live_gate.py tools/ai/a07-voice-diagnose.py tests/ai/a07_voice_diagnose_test.py tools/ai/a07-audio-pacing.py tests/ai/a07_audio_pacing_test.py tools/ai/a07-voice-once.py tests/ai/a07_voice_once_test.py
+          python3 -m py_compile tools/ai/a07-pair.py tests/ai/a07_pair_test.py tests/ai/a07_live_gate.py tools/ai/a07-voice-diagnose.py tests/ai/a07_voice_diagnose_test.py tools/ai/a07-audio-pacing.py tests/ai/a07_audio_pacing_test.py tools/ai/a07-voice-once.py tests/ai/a07_voice_once_test.py tests/ai/a07_opus_frame_pacing_test.py
           bash -n tools/ai/a07-device.sh
           python3 tests/ai/a07_pair_test.py
           python3 tests/ai/a07_voice_diagnose_test.py
@@ -107,6 +107,9 @@ jobs:
         run: |
           sudo python3 tools/ai/a07-audio-pacing.py status
           sudo python3 tools/ai/a07-audio-pacing.py apply
+          # This is the actual pinned v0.9.8 sender, but with synthetic packets;
+          # it does not open a network stream or modify the container.
+          sudo docker exec -i -w /opt/xiaozhi-esp32-server s3-voice-ai-server python3 - < tests/ai/a07_opus_frame_pacing_test.py
           sudo python3 tools/ai/a07-audio-pacing.py status
           sudo docker exec -w /opt/xiaozhi-esp32-server s3-voice-ai-server python3 -c "
           import yaml
