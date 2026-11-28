@@ -11,6 +11,9 @@
         output discard
     }
 
+    # An exact-path redirect is evaluated before the restricted app/API routes.
+    redir / /webui/ 302
+
     @webui_pages path /webui /webui/ /webui/app.css /webui/app.js /webui/audio-ui.mjs /webui/audio-opus.mjs /webui/audio-worklet.js /webui/vendor/libopus/dist/index.js /webui/vendor/libopus/dist/generated/libopus.generated.mjs /webui/api/*
     # Canonicalize public landing URLs *before* proxying to strict Auth:
     # /webui/?CF_... must not be mistaken for a private unknown endpoint.
@@ -59,12 +62,6 @@
                 header_up -X-S3-WS-Client
             }
         }
-    }
-
-    # Cloudflare Access may return visitors to the hostname root after OTP.
-    # Redirect only the exact public landing path; never proxy it to Auth.
-    handle / {
-        redir /webui/ 302
     }
 
     handle {
