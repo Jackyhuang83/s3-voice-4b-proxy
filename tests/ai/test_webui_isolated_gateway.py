@@ -105,6 +105,7 @@ class TwoGatewayIsolation(unittest.TestCase):
         # The new gateway, not the original A04 or private auth container,
         # owns the public root redirect after Cloudflare Access OTP.
         status, hdr, body = call(WEBUI_PORT, "GET", "/")
+        print("CI_GATEWAY_ROOT_RESULT:", status, "Location:", hdr.get("Location", "-"), "MIME:", hdr.get("Content-Type", "-"), "BodyLen:", len(body), flush=True)
         self.assertEqual(302, status)
         self.assertEqual("/webui/", hdr.get("Location"))
         self.assertNotIn(b"access denied", body.lower())
