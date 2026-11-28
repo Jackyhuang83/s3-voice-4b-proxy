@@ -156,7 +156,7 @@ async function openVoice() {
         const now = Date.now();
         if (now - state.lastMeterMs >= 1200) {
           state.lastMeterMs = now;
-          showMetrics(state, "正在听");
+          if (state.thinkingTimer === null) showMetrics(state, "正在听");
         }
       } catch {
         status("音频编码异常，已断开");
@@ -259,7 +259,7 @@ async function openVoice() {
           const sttToTts = state.lastSttAt === null ? null :
             Math.max(0, state.ttsStartAt - state.lastSttAt);
           showMetrics(state, "AI 正在准备语音（麦克风暂停）");
-          status("AI 已生成回复，正在准备语音｜识别→TTS启动 " +
+          status("AI 正在准备语音｜识别→TTS启动 " +
                  (sttToTts === null ? "未知" : (sttToTts / 1000).toFixed(1) + "s"));
         }
         if (message.state === "stop") {
