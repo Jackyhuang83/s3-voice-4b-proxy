@@ -18,10 +18,13 @@ import tempfile
 import urllib.request
 
 REPO = "Jackyhuang83/s3-voice-4b-proxy"
-SOURCE_COMMIT = "9daabddb90f817c3ad4f418089f07f85dd1e5588"
+SOURCE_COMMIT = "be32362c3a258d1fed1a608a17a6b0b837118ed1"
 FILE_NAME = "audio-ui.mjs"
 BEFORE_BLOB = "65d2dfc95000f84c67d6b121955cf9801dc1400a"
-AFTER_BLOB = "f8bf11ca3a852b1474dd827c250d2b654ade53a5"
+# Combines the already-reviewed P2-1 tail fix and P2-2 interrupt fix.
+# Either the original UI v3 or the P2-1-only release may be updated.
+INTERMEDIATE_BLOB = "f8bf11ca3a852b1474dd827c250d2b654ade53a5"
+AFTER_BLOB = "8a81e78dd5312fd37077c3d1bb95a663ea006d6b"
 BASE = Path("/opt/s3-voice-webui")
 SRC = BASE / "src"
 VOICE = SRC / "webui" / FILE_NAME
@@ -156,7 +159,9 @@ def pinned_voice():
         raise Blocked("PINNED_VOICE_BLOB_MISMATCH")
     script = data.decode("utf-8")
     for expected in ("resumeAfterAudioTail", "node.onended", "ttsStopped",
-                     "getUserMedia", "/webui/ws", "clearTimeout"):
+                     "getUserMedia", "/webui/ws", "clearTimeout",
+                     "interruptSpeaking", "awaitAbortStop",
+                     'reason:"user_interruption"'):
         if expected not in script:
             raise Blocked("VOICE_SOURCE_CONTRACT_FAILED")
     return data
@@ -237,7 +242,8 @@ def release(mode):
         if mode == "status":
             print("WEBUI_VOICE_STATE=" +
                   ("UPDATED" if blob(original) == AFTER_BLOB else
-                   "STABLE" if blob(original) == BEFORE_BLOB else "CUSTOM"),
+                   "STABLE" if blob(original) == BEFORE_BLOB else
+                   "P2_1" if blob(original) == INTERMEDIATE_BLOB else "CUSTOM"),
                   flush=True)
             return
         rollback_folder = None
@@ -253,7 +259,7 @@ def release(mode):
             if original == candidate:
                 print("WEBUI_VOICE_ALREADY_ACTIVE_PASS", flush=True)
                 return
-            if blob(original) != BEFORE_BLOB:
+            if blob(original) not in (BEFORE_BLOB, INTERMEDIATE_BLOB):
                 raise Blocked("LIVE_VOICE_CUSTOMIZED_NO_OVERWRITE")
         if container_states() != before_containers or guarded_hashes() != before_guards:
             raise Blocked("BASELINE_CHANGED_BEFORE_WRITE")
