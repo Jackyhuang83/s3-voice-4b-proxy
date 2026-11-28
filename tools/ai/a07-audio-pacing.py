@@ -53,7 +53,7 @@ def ensure_baseline():
     if cfg.count("selected_module:\n") != 1:
         raise ValueError("missing or ambiguous module selection")
     for kind in ("ASR", "LLM", "TTS"):
-        if len(re.findall(rf"(?m)^  {kind}:[ \\t]*[^#\\s]+", cfg)) != 1:
+        if len(re.findall(rf"(?m)^  {kind}:[ \t]*[A-Za-z0-9_.-]+[ \t]*(?:#.*)?$", cfg)) != 1:
             raise ValueError("missing or ambiguous module selection")
     ident = json.loads(IDENTITY.read_text())
     if ident.get("mode") != "hardware":
