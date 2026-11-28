@@ -121,8 +121,10 @@ class TwoGatewayIsolation(unittest.TestCase):
                     self.assertIn(b'id="loginView"', body)
         # No broad rewrite: old A04, private API, OTA, static variations
         # and unknown routes stay inaccessible.
-        for path in ("/invalid", "/webui/api/models?callback=synthetic",
-                     "/internal/ws-auth?callback=synthetic", "/xiaozhi/v1/"):
+        self.assertEqual(404, call(WEBUI_PORT, "GET",
+                                   "/webui/api/models?callback=synthetic")[0])
+        for path in ("/invalid", "/internal/ws-auth?callback=synthetic",
+                     "/xiaozhi/v1/"):
             self.assertEqual(403, call(WEBUI_PORT, "GET", path)[0])
         self.assertEqual(403, call(LEGACY_PORT, "GET", "/")[0])
 
