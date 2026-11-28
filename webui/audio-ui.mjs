@@ -119,6 +119,9 @@ function interruptSpeaking(state) {
   if (!send(state.ws, {type:"listen",state:"start",mode:"auto",
                       session_id:state.sessionId})) return false;
   state.awaitAbortStop = true;
+  // Keep suppressing stale audio after the abort acknowledgement until an
+  // explicit new TTS start; an old producer may have queued late packets.
+  state.ignoreAudioUntilTtsStart = true;
   state.speaking = false;
   state.ttsStopped = false;
   state.playbackAt = state.ctx.currentTime;
@@ -145,6 +148,7 @@ async function openVoice() {
     processor: null, quiet: null, playbackAt: 0, ready: false, cancelled: false,
     sent: 0, received: 0, underrun: 0, ttsStopped: false,
     speaking: false, sessionId: null, awaitAbortStop: false,
+    ignoreAudioUntilTtsStart: false,
     sources: new Set(), helloTimer: null, resumeTimer: null,
     inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission",
     lastVoiceAt: null, lastSttAt: null, asrWaitMs: null,
@@ -245,8 +249,8 @@ async function openVoice() {
     state.ws.onmessage = (event) => {
       if (state.cancelled) return;
       if (event.data instanceof ArrayBuffer) {
-        // Discard packets still in flight from an interrupted AI response.
-        if (state.awaitAbortStop) return;
+        // Discard old response frames before and after abort acknowledgment.
+        if (state.awaitAbortStop || state.ignoreAudioUntilTtsStart) return;
         try {
           if (state.ttsStartAt !== null && state.firstAudioMs === null) {
             state.firstAudioMs = performance.now() - state.ttsStartAt;
@@ -309,6 +313,7 @@ async function openVoice() {
         if (message.state === "start") {
           // A stale start can precede the official abort acknowledgement.
           if (state.awaitAbortStop) return;
+          state.ignoreAudioUntilTtsStart = false;
           stopThinking(state);
           state.ttsStopped = false;
           state.speaking = true;
