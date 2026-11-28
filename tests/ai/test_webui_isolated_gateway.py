@@ -112,13 +112,10 @@ class TwoGatewayIsolation(unittest.TestCase):
                      "/webui?callback=synthetic"):
             with self.subTest(path=path):
                 status, hdr, body = call(WEBUI_PORT, "GET", path)
-                if path.startswith("/webui?"):
-                    self.assertEqual(302, status)
-                    self.assertEqual("/webui/", hdr.get("Location"))
-                else:
-                    self.assertEqual(200, status)
-                    self.assertIn("text/html", hdr.get("Content-Type", ""))
-                    self.assertIn(b'id="loginView"', body)
+                self.assertEqual(200, status)
+                self.assertIn("text/html", hdr.get("Content-Type", ""))
+                self.assertIn(b'id="loginView"', body)
+                self.assertNotIn(b"synthetic", body)
         # No broad rewrite: old A04, private API, OTA, static variations
         # and unknown routes stay inaccessible.
         self.assertEqual(404, call(WEBUI_PORT, "GET",
