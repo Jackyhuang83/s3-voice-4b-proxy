@@ -1,0 +1,55 @@
+name: A09-Lite P2 single-host iPhone ingress and production installer
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/a09_lite.py'
+      - 'tools/ai/a09-lite-deploy.sh'
+      - 'tools/ai/a09-same-host.sh'
+      - 'tools/ai/a09_same_host.py'
+      - 'tools/ai/a09_diagnose.py'
+      - 'tools/ai/a09_edge_audit.py'
+      - 'deploy/ai/a09-lite/**'
+      - 'tests/ai/a09_p2_*'
+      - 'tests/ai/test_a09_p2.py'
+      - 'tests/ai/test_a09_edge_audit.py'
+      - 'tests/ai/test_a09_lite.py'
+      - 'docs/ai/A09-P2-ISOLATED-IOS.md'
+      - '.github/workflows/ai-a09-p2.yml'
+  workflow_dispatch:
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Bash + Python syntax
+        run: |
+          bash -n tools/ai/a09-lite-deploy.sh
+          bash -n tools/ai/a09-same-host.sh
+          bash -n tests/ai/a09_p2_docker.sh
+          bash -n tests/ai/a09_p2_install_docker.sh
+          python -m py_compile tools/ai/a09_edge_audit.py tools/ai/a09_diagnose.py tools/ai/a09_same_host.py tools/ai/a09_lite.py tests/ai/a09_p2_fake_voice.py tests/ai/test_a09_p2.py
+      - name: P1 regression and P2 isolation security contracts
+        run: |
+          python -m unittest discover -s tests/ai -p 'test_a09_lite.py' -v
+          python -m unittest discover -s tests/ai -p 'test_a09_p2.py' -v
+          python -m unittest discover -s tests/ai -p 'test_a09_edge_audit.py' -v
+  caddy-integration:
+    needs: [static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Genuine Caddy + Python 3.13 isolated activation/WS HMAC
+        run: bash tests/ai/a09_p2_docker.sh
+  install-pilot-simulator:
+    needs: [static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise real P2 install / same-host activation / rollback / stop against isolated fake A03-A04
+        run: bash tests/ai/a09_p2_install_docker.sh

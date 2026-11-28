@@ -87,6 +87,46 @@ class ActivationContract(unittest.TestCase):
         self.assertEqual(result["websocket"]["token"], TOKEN)
         return result
 
+    def test_diagnostics_are_aggregate_only_and_missing_client_is_denied(self):
+        url = self.adapter_url + "/internal/diagnostics"
+        with self.opener.open(url, timeout=4) as response:
+            before = json.load(response)
+        self.assertEqual(before["counts"]["ota_seen"], 0)
+        self.assertEqual(before["counts"]["missing_client_id"], 0)
+        req = request.Request(
+            self.adapter_url + "/xiaozhi/ota/",
+            data=b'{"application":{"version":"2.6.0"}}',
+            headers={"Device-Id": D1, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(error.HTTPError) as denied:
+            self.opener.open(req, timeout=4)
+        self.assertEqual(denied.exception.code, 400)
+        with self.opener.open(url, timeout=4) as response:
+            after = json.load(response)
+        self.assertEqual(after["counts"]["ota_seen"], 1)
+        self.assertEqual(after["counts"]["missing_client_id"], 1)
+        self.assertEqual(after["counts"]["ota_code_in_response"], 0)
+        self.assertNotIn(D1, json.dumps(after))
+        self.assertNotIn(C1, json.dumps(after))
+        self.assertNotIn("device_id", after)
+        self.assertEqual(FakeUpstream.requests, [])
+        self.assertEqual(self.call(path="/xiaozhi/ota/", method="GET")[0], 405)
+        with self.opener.open(url, timeout=4) as response:
+            get_stats = json.load(response)
+        self.assertEqual(get_stats["counts"]["ota_get_seen"], 1)
+
+    def test_diagnostics_upstream_errors_do_not_expose_private_fields(self):
+        self.upstream_server.shutdown()
+        self.upstream_server.server_close()
+        status, _ = self.call()
+        self.assertEqual(status, 503)
+        with self.opener.open(self.adapter_url + "/internal/diagnostics", timeout=4) as response:
+            data = json.load(response)
+        self.assertEqual(data["counts"]["upstream_error"], 1)
+        self.assertEqual(data["counts"]["ota_code_in_response"], 0)
+        self.assertNotIn(D1, json.dumps(data))
+
     def test_init_private_and_no_external_dependencies(self):
         db = pathlib.Path(self.tmp.name) / "db.sqlite"
         self.assertEqual(db.stat().st_mode & 0o777, 0o600)
