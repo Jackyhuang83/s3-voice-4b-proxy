@@ -52,6 +52,13 @@ jobs:
           python3 -m unittest discover -s tests/ai -p 'test_webui_v2.py' -v
       - name: Execute mocked user chat, SSE reply copy and mobile keyboard
         run: node tests/ai/test_webui_v2.mjs
+      - name: Install CJK glyph coverage in ephemeral CI runner screenshots only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -yq --no-install-recommends fonts-noto-cjk
+          fc-cache -f
       - name: Real Chrome renders 375/430/768/1280 widths with mocked same-origin API
         shell: bash
         run: |
