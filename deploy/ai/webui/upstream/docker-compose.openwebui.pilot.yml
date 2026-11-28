@@ -1,0 +1,42 @@
+# Official upstream Open WebUI pilot: no copied/reimplemented UI or audio code.
+# Isolated evaluation only; never route production webvoice.cncloudx.com here
+# before server-side STT+TTS and Safari acceptance.
+# Upstream: https://github.com/open-webui/open-webui
+# Image version: https://github.com/open-webui/open-webui/releases/tag/v0.12.3
+# License/brand notices: https://github.com/open-webui/open-webui/blob/main/LICENSE
+name: s3-webui-upstream-evaluation
+
+services:
+  upstream-webui:
+    image: ghcr.io/open-webui/open-webui:v0.12.3-slim
+    pull_policy: missing
+    container_name: s3-upstream-openwebui-eval
+    restart: "no"
+    init: true
+    # Pilot is local-only. Existing Cloudflare Tunnel, Caddy, WebAuth,
+    # VoiceCore, SpeechEngine and device gateway are untouched.
+    ports:
+      - "127.0.0.1:18173:8080"
+    environment:
+      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY:?set_private_64char_secret_before_pilot}
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      # The official slim image REQUIRES external server STT for voice calls.
+      # Do NOT fake a functional call using browser-only Web Speech.
+      # Configure the mature provider in its own admin Settings -> Audio.
+    volumes:
+      - openwebui_eval_data:/app/backend/data
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1024m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=4)"]
+      interval: 15s
+      timeout: 7s
+      retries: 6
+      start_period: 60s
+
+volumes:
+  openwebui_eval_data:
