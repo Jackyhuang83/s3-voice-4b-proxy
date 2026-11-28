@@ -55,3 +55,15 @@
 | iPhone/4B 实机 | **尚未执行**，不得据此增加 P1/P2 正式完成率 |
 
 严格按原 GDGS：P0=10/10，P1=0/20，P2=0/25，项目整体 10/100。
+
+## 2026-11-28 Cloudflare Access 验证后入口路径缺陷（P2-1 PR #39 原 PR 修复）
+
+用户实机已完成 iPhone WebUI 语音闭环，但 Cloudflare 邮箱一次性码成功后偶发出现 `{"error":"access denied"}`。只读实测：内部 Auth/Gateway `/webui/` 均 200 HTML，未登录 `/webui/api/models` 均 401；公网无 Access Cookie 的 `/`、`/webui/`、`/webui/api/session` 均 302（Access 跳转），不能凭此认定公网路由或凭据已恢复。
+
+**源代码确认的两个缺陷及最小修复：**
+1. 原独立 Gateway 的 `/` 未路由，正常返回 403；如访问/认证回跳根路径，用户可能看不到 WebUI。只给 Gateway 的精确 `/` 增加 `302 Location: /webui/`；**不更改 Auth 内网可见性、不把根路由转发到 Auth**，其他未知路径及私有 API 继续拒绝。
+2. Auth 的静态页面路由使用 `self.path` 精确匹配；`/webui/?...` 或 `/webui?...` 在认证回跳保留查询串时会被错误判断为 404 JSON_DENIED。只对公开的主页 `/webui/` 和 `/webui` 允许查询串并规范化查找文件/重定向；`/internal/ws-auth`、`/webui/api/*`、设备 OTA 和其他未知路由保持严格精确匹配及原授权检查。不记录、回显查询值，避免泄漏 Access 参数。
+
+**验收/部署顺序：** 本 PR 内补充 Auth stdlib 负向测试和真实 Caddy 独立网关测试；所有专项 CI PASS 后，仅提供用户可直接复制到 VPS 的只读公网/容器差异检查和可逆最小变更脚本。**Caddy 变更需要新网关配置 reload；必须先验证是否支持热重载及现有容器权限，不能擅自重启原 A03/A04 或 cloudflared。** 若运行时 Cloudflare Tunnel 指向 Auth 而非 Gateway，必须先修正隔离入口映射，不通过公开 Auth 根路径掩盖该安全问题。CI 通过不能替代实际 CF 验证后 Safari 验收。
+
+任务仍为 P2-1 PR #39 的可逆 P1 缺陷修复，不新增 PR、不改原路线图权重。正式验收得分仍取决于用户实际 VPS/浏览器证据。
