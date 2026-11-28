@@ -75,6 +75,6 @@ obs, err, out = fake_release("apply", [baseline], failed=True)
 assert err == "PACING_HELPER_APPLY_BLOCKED" and obs == ["status", "apply"]
 obs, err, out = fake_release("apply", [baseline, active], changed=True)
 assert err == "PROTECTED_CONTAINERS_CHANGED" and obs == ["status","apply","status","rollback"]
-assert "A07_VOICE_PROTECTED_CHANGE_ROLLED_BACK" in out
+assert "A07_VOICE_POSTCHECK_ROLLBACK_PASS" in out
 assert "PRIVATE" not in out and "fixture" not in out
 print("A07_VOICE_ONE_SHOT_TEST_PASS: base, idempotency, rollback and protected-container guards")
