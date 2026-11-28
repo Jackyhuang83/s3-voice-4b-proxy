@@ -12,6 +12,8 @@ on:
       - 'deploy/ai/webui/Caddyfile.isolated'
       - 'tests/ai/test_webui_opus.mjs'
       - 'tests/ai/test_webui_audio_ui.mjs'
+      - 'tests/ai/test_webui_voice_publish.py'
+      - 'tools/ai/webui_voice_publish.py'
       - 'docs/ai/P2-WEBUI-AUDIO.md'
       - 'docs/ai/P1-WEBUI-PILOT.md'
       - 'tools/ai/webui_pilot.py'
@@ -42,13 +44,15 @@ jobs:
           node --check webui/audio-worklet.js
           node --check tests/ai/test_webui_opus.mjs
           node --check tests/ai/test_webui_audio_ui.mjs
-          python3 -m py_compile tools/ai/webui_text.py
+          python3 -m py_compile tools/ai/webui_text.py tools/ai/webui_voice_publish.py tests/ai/test_webui_voice_publish.py
       - name: Verify official package checksum and retained MIT/BSD notices
         run: bash tools/ai/webui-vendor-opus.sh
       - name: Encode + decode 30 ACTUAL WASM 16kHz 60ms raw Opus packets
         run: node tests/ai/test_webui_opus.mjs
       - name: Exercise browser microphone, TTS pause/resume and logout lifecycle without network
         run: node tests/ai/test_webui_audio_ui.mjs
+      - name: Isolated one-click browser voice publisher no-restart apply and rollback
+        run: python3 tests/ai/test_webui_voice_publish.py
       - name: Security and CSP negative assertions for browser audio
         run: |
           python3 - <<'PY'
