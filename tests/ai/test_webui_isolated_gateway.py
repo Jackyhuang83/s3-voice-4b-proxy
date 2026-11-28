@@ -110,13 +110,16 @@ class TwoGatewayIsolation(unittest.TestCase):
         self.assertEqual("/webui/", hdr.get("Location"))
         self.assertNotIn(b"access denied", body.lower())
         for path in ("/webui/", "/webui/?CF_Authorization=synthetic",
-                     "/webui?callback=synthetic"):
+                     "/webui?callback=synthetic",
+                     "/webui/?callback=synthetic&state=second-value",
+                     "/webui/?callback=synthetic%2Bencoded"):
             with self.subTest(path=path):
                 status, hdr, body = call(WEBUI_PORT, "GET", path)
                 self.assertEqual(200, status)
                 self.assertIn("text/html", hdr.get("Content-Type", ""))
                 self.assertIn(b'id="loginView"', body)
                 self.assertNotIn(b"synthetic", body)
+                self.assertNotIn(b"second-value", body)
         # No broad rewrite: old A04, private API, OTA, static variations
         # and unknown routes stay inaccessible.
         self.assertEqual(404, call(WEBUI_PORT, "GET",
