@@ -27,3 +27,14 @@
 - 当前迁移候选分支从 `release/s3-voice-ui-v3-20261128` 创建。只在本**非生产分支**执行旧 WebVoice 源文件的删除，作为成熟替换来源的源码迁移草稿。旧 WebUI HTML/JS/CSS/WebAuth 本身仍在稳定版上运行，**必须在替代产品通过实机验收后才清理实际使用的依赖**。
 - 不修改 VPS、不关闭服务、不创建公开路由、不调用付费模型、不触碰 4B 固件及设备网关。
 - P0–P3 的阶段、PR 数量、权重、依赖及验收标准见 `docs/ai/WEBUI-ROADMAP.md` 新增章节。
+
+
+## 2026-11-28 新增：无需自写的完整语音接口组合（仅候选）
+
+**Open WebUI 官方 Standard Voice + ScribeCrate**：第三方维护项目 [hwdsl2/scribecrate](https://github.com/hwdsl2/scribecrate) 已发布 **OpenAI-compatible `POST /v1/audio/transcriptions`**，可以直接满足 Open WebUI 服务端 STT 协议；支持 `base` 多语种 Whisper、`WHISPER_LANGUAGE=zh` 中文及 CPU/int8。原有 Open WebUI 浏览器 TTS 直接采用浏览器语音合成，不另开发 TTS。新增配置 `docker-compose.mature-stt.optional.yml` 仅组合现成两个 Docker 容器及既有公开 API 参数，不涉及自写音频采集、转码、播放、打断或协议实现。
+
+**已证实的资源限制**：ScribeCrate 官方要求 default `base` 至少约 700MB 可用物理 RAM；官方 Open WebUI `slim` 空闲实测约 300MiB（不是峰值）。两者叠加须考虑现有 VoiceCore/WebAuth 和 Docker 内存，故**部署之前必须确认物理 MemAvailable ≥ 2.5 GiB，且 Swap 没有明显上涨**。历史用户 VPS 仅约 1.5GiB MemAvailable，因此**目前禁止在这台现网 VPS 同时启动试验双容器**。GitHub CI Runner 独立资源环境可以试运行，以便提前排除配置错误；不代表 VPS 资源足够。
+
+**安全**：STT 不映射宿主端口，使用统一且私有的 `UPSTREAM_STT_KEY`，`latest` 标签只允许在 CI/隔离候选中使用，实际生产必须固定 Docker 不可变 digest，并通过负向认证。Open WebUI `v0.12.3-slim` 官方发行镜像独立卷、127.0.0.1 端口，不设置公开路由和用户生产模型 key。**不执行已关闭的自写 WebVoice PR #39/#50 发布器。**
+
+**成熟方案级别**：目前是**官方源码与 API 接口契约核对通过，候选配置已提交**；真实镜像启动、中文语音质量、iPhone Safari 的连续对话和生产可用性均**未通过验收**。若验收不满足，按 GDGS 转查其他成熟客户端，禁止自研。
