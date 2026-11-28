@@ -99,3 +99,18 @@ P0=10/10，P1 尚未完成既定正式阶段验收，P2=0/25（P2-1 在实机验
 - **保护及回退**：读取 4 个已运行容器的 ID/StartedAt，验证 WebUI Auth 的只读源码挂载，无公开 host ports；所有其他 WebUI 文件哈希保持不变。发布前从现有独立 WebUI Gateway/Auth 内部验证 UI、文字脚本、会话 API 和未登录 WebSocket 拒绝状态；保存私有原文件备份后原子更新，再读取 HTTP 实际响应 SHA-256 验证，无容器重启。任何应用/验证失败自动恢复原始字节；可单独执行 `rollback` 并留下审计快照。
 - **CI**：`tests/ai/test_webui_voice_publish.py` 覆盖正常应用、重复执行、人工回滚、发布后检查失败自动回滚；`tests/ai/test_webui_audio_ui.mjs` 覆盖结束事件驱动、未播完不恢复收音、手动停止。Docker/网络均由 mock 代替，不触发生产 VPS。
 - **真实验收门槛**：GitHub 最新 CI 通过 + 在 VPS 成功执行只更改音频前端模块 + Safari 实际连续对话。上述任何一项未完成，不得标注生产声音已修复。4B 安全诊断与 WebUI 语音无关，不可成为前端发布绕过条件，亦不在此 PR 修改。
+
+
+## WebVoice P2-2 (2026-11-28): Native abort, 30 rounds, single-file guarded release
+
+**User-facing module names:** WebUI (visual UI), WebVoice (browser speech), WebGateway (Caddy), WebAuth (browser auth), WebChat (text), VoiceCore (shared existing XiaoZhi service), SpeechEngine (ASR/TTS), ModelAPI (user-changeable model API). Historical A-number labels are not used for new user-facing work. DeviceGateway, DeviceVoice and DeviceManager are outside this project.
+
+**Mature protocol reused:** XiaoZhi v0.9.8 `core/handle/abortHandle.py` natively handles `{"type":"abort","session_id":...,"reason":"user_interruption"}`, cancels ongoing LLM/TTS queues and emits `{"type":"tts","state":"stop"}`. Its `listenMessageHandler.py` handles `{"type":"listen","state":"start","mode":"auto",...}` to reset current audio capture state. No server protocol modification.
+
+**WebVoice interaction:** When AI speaks, tapping the existing microphone control sends abort + listen-start on the **same authenticated WSS session**, immediately stops local queued audio, reopens the mic, suppresses stale binary packets, and ignores the abort acknowledgement's duplicate TTS stop. During normal listening, the same button still stops the session. Normal TTS finishes only via actual `AudioBufferSourceNode.onended` across all pending buffers, not an estimated delay. Browser UI exposes different accessible names for interrupt vs stop, preserves the existing SVG and current WebUI v3.
+
+**Testing performed:** The actual GitHub source `webui/audio-ui.mjs` and `tests/ai/test_webui_audio_ui.mjs` were executed in an isolated JavaScript V8 browser mock; output `WEBVOICE_P2_2_AUDIO_PASS` covered thirty consecutive completed audio turns, mic pause/after-actual-tail resume, native abort+listen, stale packet rejection, second click stop and delayed logout. This is **mocked functional evidence only**, not iPhone audio proof or GitHub CI. The GitHub workflow additionally runs pinned real libopus-wasm 0.4.1 encode/decode, isolated WebGateway test and source publisher tests when scheduled.
+
+**Single copy-paste VPS publisher (source prepared, not yet authorized):** `tools/ai/webui_voice_publish.py` hash-pins the completed P2-1+P2-2 audio source at immutable commit `be32362c3a258d1fed1a608a17a6b0b837118ed1`. Accepts *either* unmodified stable UI v3 WebVoice (blob `65d2dfc95000f84c67d6b121955cf9801dc1400a`) or previously applied P2-1 WebVoice (blob `f8bf11ca3a852b1474dd827c250d2b654ade53a5`); rejects any other custom files. Only atomic replacement of `/opt/s3-voice-webui/src/webui/audio-ui.mjs`, no HTML/CSS, model keys, Cloudflare routing or container restarts. Private snapshot and strict HTTP/unchanged-container hashes, auto rollback on failed checks, explicit manual rollback. P2-1 and P2-2 CI must both pass before use. Reusing a single publisher avoids asking the owner to perform two sequential updates.
+
+**Pending acceptance:** no production VPS release, no real browser continuous voice test, no user confirmation of stable playback; do not mark the P2-2 11 points complete. Existing UI v3 text and owner login remain protected.
