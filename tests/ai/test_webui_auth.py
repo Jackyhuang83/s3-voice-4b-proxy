@@ -118,6 +118,33 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual((200, False), (status, json.loads(body)["authenticated"]))
         self.assertEqual(403, self.req("GET", "/internal/ws-auth")[0])
 
+    def test_access_callback_landing_query_only_and_strict_protected_routes(self):
+        # The public login shell is always reachable without an owner cookie,
+        # even if Cloudflare Access returns to it with a query suffix.
+        for path in ("/webui/", "/webui/?CF_Authorization=synthetic",
+                     "/webui/?returnTo=%2Fwebui%2F"):
+            with self.subTest(path=path):
+                status, hdr, body = self.req("GET", path)
+                self.assertEqual(200, status)
+                self.assertIn("text/html", hdr.get("Content-Type", ""))
+                self.assertIn(b'id="loginView"', body)
+                self.assertNotIn(b"synthetic", body)
+        status, hdr, body = self.req("GET", "/webui?code=private-example")
+        self.assertEqual(302, status)
+        self.assertEqual("/webui/", hdr.get("Location"))
+        self.assertNotIn(b"private-example", body)
+
+        # Still fail closed on all APIs, WebSocket handshakes and unknown
+        # paths, even when supplied the same Access-like query string.
+        for path in ("/", "/?code=example", "/webui/api/session?code=x",
+                     "/webui/api/models?code=x", "/internal/ws-auth?code=x",
+                     "/webui/api/login?code=x",
+                     "/webui/audio-ui.mjs?code=x", "/webui/unknown?code=x"):
+            with self.subTest(path=path):
+                self.assertEqual(404, self.req("GET", path)[0])
+        self.assertEqual(403, self.req("POST", "/webui/api/login?code=x",
+                                        {"secret": OWNER}, {"Origin": ORIGIN})[0])
+
     def test_login_fail_closed_csrf_expiry_and_logout(self):
         self.assertEqual(403, self.req("POST", "/webui/api/login", {"secret":OWNER})[0])
         self.assertEqual(403, self.req("POST", "/webui/api/login", {"secret":OWNER}, {"Origin":"https://evil.example"})[0])
