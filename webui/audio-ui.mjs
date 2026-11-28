@@ -86,7 +86,7 @@ function send(ws, message) {
 // A tts.stop message only means the upstream finished streaming; it is NOT
 // proof the speaker has played all queued samples.
 function resumeAfterAudioTail(state) {
-  if (!state.ttsStopped || state.sources.size !== 0 || state.cancelled ||
+  if (state.awaitAbortStop || !state.ttsStopped || state.sources.size !== 0 || state.cancelled ||
       current !== state || !state.ready) return;
   clearTimeout(state.resumeTimer);
   state.resumeTimer = setTimeout(() => {
@@ -96,6 +96,7 @@ function resumeAfterAudioTail(state) {
         state.ws?.readyState !== WebSocket.OPEN) return;
     state.speaking = false;
     state.ttsStopped = false;
+    setVoiceButton("停止语音", true);
     state.processor?.port.postMessage({type:"start"});
     showMetrics(state, "正在听");
     status("可继续说话｜上一轮TTS首帧 " +
@@ -103,6 +104,36 @@ function resumeAfterAudioTail(state) {
             (state.firstAudioMs / 1000).toFixed(1) + "s") +
            "｜音频 " + state.audioPacketsInTurn + " 帧");
   }, 80);
+}
+
+// The official XiaoZhi v0.9.8 "abort" message cancels the LLM/TTS queue
+// without closing the authenticated WebSocket. The current mic button is the
+// manual barge-in control *only while AI speech is playing*.
+function interruptSpeaking(state) {
+  if (!state || state.cancelled || !state.ready || !state.speaking ||
+      state.ws?.readyState !== WebSocket.OPEN || !state.sessionId) return false;
+  if (!send(state.ws, {type:"abort",session_id:state.sessionId,
+                      reason:"user_interruption"})) return false;
+  // Re-enter the official listening state on the same WebSocket. The server
+  // resets its audio accumulator when it receives listen/start.
+  if (!send(state.ws, {type:"listen",state:"start",mode:"auto",
+                      session_id:state.sessionId})) return false;
+  state.awaitAbortStop = true;
+  state.speaking = false;
+  state.ttsStopped = false;
+  state.playbackAt = state.ctx.currentTime;
+  clearTimeout(state.resumeTimer);
+  state.resumeTimer = null;
+  stopThinking(state);
+  for (const node of state.sources) {
+    try { node.stop(); } catch {}
+  }
+  state.sources.clear();
+  state.processor?.port.postMessage({type:"start"});
+  setVoiceButton("停止语音",true);
+  showMetrics(state,"已打断 AI，正在听");
+  status("已打断播报，可以继续说话");
+  return true;
 }
 
 async function openVoice() {
@@ -113,7 +144,8 @@ async function openVoice() {
     ws: null, codec: null, ctx: null, stream: null, source: null,
     processor: null, quiet: null, playbackAt: 0, ready: false, cancelled: false,
     sent: 0, received: 0, underrun: 0, ttsStopped: false,
-    speaking: false, sources: new Set(), helloTimer: null, resumeTimer: null,
+    speaking: false, sessionId: null, awaitAbortStop: false,
+    sources: new Set(), helloTimer: null, resumeTimer: null,
     inputTimer: null, lastMeterMs: 0, inputPeak: 0, stage: "permission",
     lastVoiceAt: null, lastSttAt: null, asrWaitMs: null,
     ttsStartAt: null, firstAudioMs: null, audioPacketsInTurn: 0,
@@ -213,6 +245,8 @@ async function openVoice() {
     state.ws.onmessage = (event) => {
       if (state.cancelled) return;
       if (event.data instanceof ArrayBuffer) {
+        // Discard packets still in flight from an interrupted AI response.
+        if (state.awaitAbortStop) return;
         try {
           if (state.ttsStartAt !== null && state.firstAudioMs === null) {
             state.firstAudioMs = performance.now() - state.ttsStartAt;
@@ -256,7 +290,8 @@ async function openVoice() {
         clearTimeout(state.helloTimer);
         state.helloTimer = null;
         state.ready = true;
-        send(state.ws,{type:"listen",state:"start",mode:"auto",session_id:message.session_id});
+        state.sessionId = message.session_id;
+        send(state.ws,{type:"listen",state:"start",mode:"auto",session_id:state.sessionId});
         state.processor.port.postMessage({type:"start"});
         state.stage = "streaming";
         state.inputTimer = setTimeout(() => {
@@ -272,9 +307,12 @@ async function openVoice() {
         startThinking(state);
       } else if (message.type === "tts") {
         if (message.state === "start") {
+          // A stale start can precede the official abort acknowledgement.
+          if (state.awaitAbortStop) return;
           stopThinking(state);
           state.ttsStopped = false;
           state.speaking = true;
+          setVoiceButton("打断播报并继续说话",true);
           state.ttsStartAt = performance.now();
           state.firstAudioMs = null;
           state.audioPacketsInTurn = 0;
@@ -289,6 +327,12 @@ async function openVoice() {
                  (sttToTts === null ? "未知" : (sttToTts / 1000).toFixed(1) + "s"));
         }
         if (message.state === "stop") {
+          if (state.awaitAbortStop) {
+            // Official abortHandle sends a tts.stop acknowledgement; do not
+            // accidentally enter the tail-resume path a second time.
+            state.awaitAbortStop = false;
+            return;
+          }
           state.ttsStopped = true;
           const ttsFirst = state.firstAudioMs === null ? "未收到音频帧" :
             (state.firstAudioMs / 1000).toFixed(1) + "s";
@@ -347,6 +391,7 @@ function stopVoice(state = current) {
 
 button?.addEventListener("click",async()=>{
   if(current) {
+    if (current.speaking && interruptSpeaking(current)) return;
     stopVoice();
     status("已停止语音");
     return;
