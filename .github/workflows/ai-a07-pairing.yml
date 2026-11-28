@@ -26,11 +26,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python/Bash syntax and safe strict Caddy transformation
         run: |
-          python3 -m py_compile tools/ai/a07-pair.py tests/ai/a07_pair_test.py tests/ai/a07_live_gate.py tools/ai/a07-voice-diagnose.py tests/ai/a07_voice_diagnose_test.py tools/ai/a07-audio-pacing.py tests/ai/a07_audio_pacing_test.py
+          python3 -m py_compile tools/ai/a07-pair.py tests/ai/a07_pair_test.py tests/ai/a07_live_gate.py tools/ai/a07-voice-diagnose.py tests/ai/a07_voice_diagnose_test.py tools/ai/a07-audio-pacing.py tests/ai/a07_audio_pacing_test.py tools/ai/a07-voice-once.py tests/ai/a07_voice_once_test.py
           bash -n tools/ai/a07-device.sh
           python3 tests/ai/a07_pair_test.py
           python3 tests/ai/a07_voice_diagnose_test.py
           python3 tests/ai/a07_audio_pacing_test.py
+          python3 tests/ai/a07_voice_once_test.py
       - name: Enforce no flashing, firewalls or credentials in commands
         run: |
           python3 - <<'PY'
