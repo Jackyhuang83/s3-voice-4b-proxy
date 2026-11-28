@@ -123,3 +123,26 @@ python3 tools/ai/a07-audio-pacing.py apply
 | Hardware | 4B's real firmware Wi-Fi setup accepts custom OTA URL; 4B reaches self-hosted WSS; real microphone, ASR -> own GPT -> EdgeTTS -> speaker audible response verified |
 
 **A07 is NOT complete from CI alone.** Only after actual 4B hardware test, merge A07 and credit project +15% (75%→90%). A08 stability/release remains +10%. Preserve the currently working 4B firmware and A03–A06 baseline; do not proactively work on rare failure modes. The simple 4B voice conversation is the acceptance target.
+
+## 2026-11-28 A07 audio continuity follow-up — reuse existing native sender, provider-agnostic
+
+**No new server implementation and no production change yet.** The user confirmed this project connects through a **generic configurable API**, and the upstream model/provider may change at any time. The audio trial preserves the entire running YAML and tests only the one official `tts_audio_send_delay` key. The internal historical provider adapter name in any old config is **not** a product requirement.
+
+### Official evidence / differential diagnosis
+
+- **Server tag `v0.9.8`** `main/xiaozhi-server/core/handle/sendAudioHandle.py` (Git blob `509938c37b8aa9de0c17e4a77512a5638e6f6330`): `AUDIO_FRAME_DURATION = 60`, `PRE_BUFFER_COUNT = 5`, and `tts_audio_send_delay > 0` queues every packet, bypassing the initial 5-packet burst without modifying code. The latest upstream default pre-buffer is 2 frames, but that does **not** justify upgrading the whole production stack.
+- Upstream xinnan-tech/xiaozhi-esp32-server [#3349](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/3349) verified 0 pre-buffer helps a **different ESP32-C3**, not proven for this Waveshare ESP32-S3 Touch-LCD-4B.
+- xinnan-tech/xiaozhi-esp32-server [#2632](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/2632) and [#2647](https://github.com/xinnan-tech/xiaozhi-esp32-server/issues/2647) discuss actual in-sentence stalls, other hardware, and transport.
+- 78/xiaozhi-esp32 [#1665](https://github.com/78/xiaozhi-esp32/issues/1665) highlights that a premature `tts stop` may clear the device output queue and truncate the **last syllables**; **do not infer** that it explains stutter in the middle of the same sentence.
+- A07's prior INFO-log metrics confirmed TTS production and first-send milestones but **cannot prove per-frame send cadence or client DAC playback**. CPU/RAM, first-TTS latency and 0 send failures in a short window cannot eliminate packet starvation.
+
+### Minimal safe repair strategy (same PR #27, no new PR)
+
+1. Read-only: verify the *running* A03 server's sender implementation metadata with the original image, not merely a GitHub source commit. Confirm 60ms frame size, 5-frame default pre-buffer, native `tts_audio_send_delay`, full pacing branch and end-of-stream queue wait. Do not print secrets or raw speech.
+2. Only after original A03/A04 OTA/WSS checks pass, use **existing** reversible config-only `tools/ai/a07-audio-pacing.py apply` once: exact private backup; change 0→60 at YAML root; restart **only** A03; verify OTA/WSS; failure restores original config. The **status** action is read-only and reports the source audit.
+3. Complete one 4B voice playback acceptance under controlled conditions. Listening continuity, a complete sentence without mid-word stops or premature standby, actual WSS stability and audible ending are independently observed. A CI pass or configuration change alone is **not** real hardware acceptance.
+4. If stutter remains, rollback once with the existing command and examine evidence before any device firmware, TTS provider, Tunnel, or audio queue change. **Do not** repeatedly cycle settings or reflash without a verified cause.
+
+### GDGS gates (existing complete project roadmap retained)
+
+P0–P2 75% accepted as already documented; **A07/P3 15% remains unaccepted** until real 4B speech passes; **A08/P4 10%** is stability/release and depends on A07. This patch does not alter the weighted roadmap. Current PR remains #27; test failures repaired inside #27. Neither read-only code inspection nor isolated CI should be presented as a live audio fix.
