@@ -113,7 +113,7 @@ def release(mode="apply"):
                     stream.write(data)
             before = protected_fingerprint()
             initial = status_kind(helper_call(root, "status"))
-            print("A07_VOICE_SOURCE_AND_A04_PREFLIGHT_PASS", flush=True)
+            print("A07_VOICE_RUNTIME_PREFLIGHT_PASS", flush=True)
             if mode == "rollback":
                 if initial != "active":
                     raise SafeStop("ROLLBACK_REQUIRES_ACTIVE_TRIAL")
@@ -132,17 +132,25 @@ def release(mode="apply"):
             if initial != "baseline":
                 raise SafeStop("PREVIOUS_TRIAL_REQUIRES_REVIEW")
             print("A07_VOICE_PRODUCTION_BASELINE_PASS", flush=True)
-            helper_call(root, "apply")
-            final = status_kind(helper_call(root, "status"))
-            if final != "active":
-                raise SafeStop("PACING_NOT_ACTIVE_AFTER_APPLY")
-            if protected_fingerprint() != before:
-                try:
-                    helper_call(root, "rollback")
-                    print("A07_VOICE_PROTECTED_CHANGE_ROLLED_BACK", flush=True)
-                except SafeStop:
-                    print("A07_VOICE_RECOVERY_UNVERIFIED", flush=True)
-                raise SafeStop("PROTECTED_CONTAINERS_CHANGED")
+            applied = False
+            try:
+                helper_call(root, "apply")
+                applied = True
+                final = status_kind(helper_call(root, "status"))
+                if final != "active":
+                    raise SafeStop("PACING_NOT_ACTIVE_AFTER_APPLY")
+                if protected_fingerprint() != before:
+                    raise SafeStop("PROTECTED_CONTAINERS_CHANGED")
+            except (SafeStop, OSError, subprocess.TimeoutExpired):
+                # The A07 helper already restores on an apply failure. If it
+                # returned success but a *post*-check fails, roll back once.
+                if applied:
+                    try:
+                        helper_call(root, "rollback")
+                        print("A07_VOICE_POSTCHECK_ROLLBACK_PASS", flush=True)
+                    except (SafeStop, OSError, subprocess.TimeoutExpired):
+                        print("A07_VOICE_RECOVERY_UNVERIFIED", flush=True)
+                raise
             print("A07_VOICE_PACING_60MS_ACTIVE_PASS", flush=True)
             print("A07_VOICE_A04_OTA_WSS_AND_WEBUI_UNCHANGED_PASS", flush=True)
             print("A07_VOICE_REAL_4B_PLAYBACK_UNVERIFIED", flush=True)
