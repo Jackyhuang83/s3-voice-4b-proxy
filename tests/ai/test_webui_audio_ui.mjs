@@ -138,7 +138,11 @@ assert.equal(elements.voiceMetrics.hidden,false);
 assert.match(elements.voiceMetrics.textContent,/正在听.*已发送 1 帧/);
 assert.match(status.textContent,/已发送|已采集|正在听/, "local mic frame telemetry must be available");
 ws.onmessage({data:JSON.stringify({type:"stt",text:"synthetic words never logged"})});
-assert.match(status.textContent,/已识别.*等待 AI 回答/, "ASR stage timing shown");
+assert.match(status.textContent,/AI 思考中.*已等待 0 秒/, "explicit thinking indicator appears after STT");
+assert.match(elements.voiceMetrics.textContent,/AI 思考中.*已等待 0 秒/, "thinking indicator is visible near mic");
+await new Promise(resolve=>setTimeout(resolve,1100));
+assert.match(status.textContent,/AI 思考中.*已等待 [1-9] 秒/,
+  "thinking elapsed seconds update while server prepares a reply");
 assert.ok(!status.textContent.includes("synthetic words"),
   "diagnostics must not display speech transcript");
 
@@ -146,9 +150,12 @@ ws.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
 assert.equal(port.messages.at(-1).type,"stop");
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount,"TTS must mute microphone to prevent echo");
-assert.match(elements.voiceMetrics.textContent,/AI 回答中.*麦克风暂停/);
+assert.match(elements.voiceMetrics.textContent,/AI 正在准备语音.*麦克风暂停/,
+  "TTS start clears thinking state and shows voice preparation");
 ws.onmessage({data:new Uint8Array([1,2]).buffer});
 assert.equal(sounds.length,1);
+assert.match(status.textContent,/AI 语音已到达，正在播放/,
+  "first Opus packet transitions from preparing to playback");
 assert.equal(ws.sent.length,initialCount, "TTS audio must not enable microphone");
 ws.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
 await new Promise(resolve=>setTimeout(resolve,360));
