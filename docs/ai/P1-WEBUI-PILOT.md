@@ -67,3 +67,9 @@
 **验收/部署顺序：** 本 PR 内补充 Auth stdlib 负向测试和真实 Caddy 独立网关测试；所有专项 CI PASS 后，仅提供用户可直接复制到 VPS 的只读公网/容器差异检查和可逆最小变更脚本。**Caddy 变更需要新网关配置 reload；必须先验证是否支持热重载及现有容器权限，不能擅自重启原 A03/A04 或 cloudflared。** 若运行时 Cloudflare Tunnel 指向 Auth 而非 Gateway，必须先修正隔离入口映射，不通过公开 Auth 根路径掩盖该安全问题。CI 通过不能替代实际 CF 验证后 Safari 验收。
 
 任务仍为 P2-1 PR #39 的可逆 P1 缺陷修复，不新增 PR、不改原路线图权重。正式验收得分仍取决于用户实际 VPS/浏览器证据。
+
+### 2026-11-28 live customized text module: gateway-only compatibility pilot
+
+真实 VPS 管理员按之前整文件哈希锁脚本执行，输出 `ACCESS_FIX_BLOCKED: RuntimeError UNEXPECTED_ONLINE_VERSION_webui_text.py`。该阻断发生于修改/重启之前，证明 VPS 的 `webui_text.py` 与 GitHub 基线有不同的本地定制；不得覆盖整文件、不得降级版本检查后继续写入 Auth/Text。
+
+**更小的候选热修复**：只对**独立** `s3-voice-webui-gateway` 的 Caddyfile，在已有页面 matcher 内新增 `@webui_landing path /webui /webui/` + `rewrite @webui_landing /webui/`，从而剥离访问登录首页时的 OTP 回跳查询串而不触碰私有 API、WS 或自定义文字聊天；另外精确 `/` → `/webui/` 302。无需覆写 `webui_text.py`、`webui_auth.py` 或重启 Auth，保留已有的语音/文字会话。发布前必须校验 Caddyfile 结构、隔离 `caddy validate`，保留源文件备份并通过对 Gateway 的 SIGUSR1 重载验证。最新 CI 当前仍为排队未验收。此热修复仍不能证明外部 Tunnel 一定指向 Gateway；真实公网路径经 Cloudflare Access 验证后需单独验收。
