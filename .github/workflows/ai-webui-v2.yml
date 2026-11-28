@@ -7,6 +7,7 @@ on:
       - 'webui/app.js'
       - 'tests/ai/test_webui_v2.py'
       - 'tests/ai/test_webui_v2.mjs'
+      - 'tests/ai/test_webui_v2_browser.mjs'
       - 'docs/ai/WEBUI-V2-*.md'
       - 'docs/ai/UI-V2-*.md'
       - '.github/workflows/ai-webui-v2.yml'
@@ -35,7 +36,7 @@ jobs:
           set -euo pipefail
           git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD | while IFS= read -r name; do
             case "$name" in
-              docs/ai/WEBUI-V2-*.md|docs/ai/UI-V2-*.md|webui/index.html|webui/app.css|webui/app.js|tests/ai/test_webui_v2.py|tests/ai/test_webui_v2.mjs|.github/workflows/ai-webui-v2.yml) ;;
+              docs/ai/WEBUI-V2-*.md|docs/ai/UI-V2-*.md|webui/index.html|webui/app.css|webui/app.js|tests/ai/test_webui_v2.py|tests/ai/test_webui_v2.mjs|tests/ai/test_webui_v2_browser.mjs|.github/workflows/ai-webui-v2.yml) ;;
               *) echo "WEBUI_V2_SCOPE_FAIL: $name"; exit 1 ;;
             esac
           done
@@ -47,9 +48,25 @@ jobs:
           python3 -m py_compile tests/ai/test_webui_v2.py
           node --check webui/app.js
           node --check tests/ai/test_webui_v2.mjs
+          node --check tests/ai/test_webui_v2_browser.mjs
           python3 -m unittest discover -s tests/ai -p 'test_webui_v2.py' -v
       - name: Execute mocked user chat, SSE reply copy and mobile keyboard
         run: node tests/ai/test_webui_v2.mjs
+      - name: Real Chrome renders 375/430/768/1280 widths with mocked same-origin API
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "${CHROME_BIN:-/usr/bin/google-chrome}"
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright-core@1.57.0
+          node tests/ai/test_webui_v2_browser.mjs
+      - name: Keep isolated visual screenshots for design review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webui-v2-chrome-viewport-screenshots
+          path: test-results/webui-v2-*.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Recheck existing owner security and 16k Opus browser contracts
         shell: bash
         run: |
