@@ -1,0 +1,66 @@
+# A09 Manager-Only: official manager API/Web + MySQL + Redis; NO second voice server.
+name: s3-voice-manager
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:?official MySQL digest required}
+    restart: "no"
+    mem_limit: 384m
+    cpus: "0.6"
+    pids_limit: 192
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?private password required}
+      MYSQL_DATABASE: xiaozhi_esp32_server
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=96M
+      - --performance-schema=OFF
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - "./mysql:/var/lib/mysql"
+
+  redis:
+    image: ${REDIS_IMAGE:?official Redis digest required}
+    restart: "no"
+    mem_limit: 96m
+    cpus: "0.2"
+    pids_limit: 128
+    security_opt: ["no-new-privileges:true"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "48mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - "./redis:/data"
+
+  manager:
+    image: ${MANAGER_IMAGE:?pinned official web digest required}
+    restart: "no"
+    mem_limit: 640m
+    cpus: "0.8"
+    pids_limit: 384
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_TOOL_OPTIONS: "-Xms96m -Xmx320m"
+      SPRING_DATASOURCE_DRUID_URL: "jdbc:mysql://mysql:3306/xiaozhi_esp32_server?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true&connectTimeout=30000&socketTimeout=30000"
+      SPRING_DATASOURCE_DRUID_USERNAME: root
+      SPRING_DATASOURCE_DRUID_PASSWORD: ${DB_PASSWORD:?private password required}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: ""
+    ports:
+      - "127.0.0.1:19002:8002/tcp"
+    volumes:
+      - "./uploadfile:/uploadfile"
