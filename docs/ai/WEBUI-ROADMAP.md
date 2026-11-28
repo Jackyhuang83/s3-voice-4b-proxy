@@ -94,3 +94,26 @@
 **代码整合与发布：** 仅在已有 PR #39（P2-1，权重 14）集中修复浏览器音频生命周期，剩余 P2-2（权重 11）按原计划做连续播放和打断；CI 失败留在原 PR 修。生产稳定 WebUI v3 位于独立 release 分支，不从较旧 main 全量覆盖；只允许明确源 blob 校验、备份、独立回退的 WebUI 专属变更，绝不触碰后端通用 API 供应商配置和历史设备网关。
 
 **进度原则：** P2 源码/CI 测试与浏览器可用性分开；任何本轮修改尚未获得真实 Safari 语音验收，不以自动化 PASS 宣称语音问题已经完全解决。P0/P1/P4/P5 既有状态沿用之前的验收证据，不因更新路线图虚增百分比。
+
+
+## Unified English module names — 2026-11-28
+
+Use **functional English names**, NOT A03/A04/A05/A06/A07/A09, in all new user-facing output and WebUI development reports. Those legacy labels are *historical milestones*, not descriptive runtime services. Existing Docker names, CLI paths, environment variables and legacy references remain untouched to protect production compatibility.
+
+| Canonical English name | Meaning | Historical milestone | Project |
+|---|---|---|---|
+| `VoiceCore` | XiaoZhi speech server, WebSocket/Opus transport | A03 | shared existing backend; modifications require separate approval |
+| `DeviceGateway` | 4B OTA + WSS private-device identity gateway | A04 | separate 4B project; frozen here |
+| `ModelAPI` | configurable OpenAI-compatible AI model bridge | A05 | shared model connectivity, user-configured provider |
+| `SpeechEngine` | Vosk ASR + Edge TTS services | A06 | existing backend, source of browser speech |
+| `DeviceVoice` | real 4B mic/speaker and standby tests | A07 | separate 4B project; frozen here |
+| `DeviceManager` | XiaoZhi hardware activation manager | A09 | separate 4B project; frozen here |
+| `WebUI` | browser visual interface, UI v3 | — | current project |
+| `WebGateway` | dedicated WebUI Caddy HTTPS/WSS reverse proxy | — | current project |
+| `WebAuth` | browser owner authentication and isolated WebSocket admission | — | current project |
+| `WebVoice` | browser mic, raw Opus, speech playback & continuous dialogue | P2/P3 | **current development priority** |
+| `WebChat` | web text SSE and configurable model selection | P1 | existing validated functionality |
+
+**Architecture (browser only):** `WebUI → WebGateway → WebAuth → VoiceCore → SpeechEngine ↔ ModelAPI`. Browser requests use a distinct WebGateway and authenticated session. DeviceGateway is not on the browser ingress path. Do not confuse the shared VoiceCore container name with the 4B hardware project's scope.
+
+**Original P0–P5 roadmap unchanged** (10%,20%,25%,20%,15%,10%; PR numbers and dependencies inherited). Current planned P2 deliverables are existing Draft PR #39 = 14 weight points for mic/Opus/browser playback and P2-2 = 11 for resilience/interruption. Acceptance remains distinct for source, CI, real VPS and real Safari; no credit for unverified live speech. Any code report should use the functional names above, with the legacy identifier only in one-time migration tables.
