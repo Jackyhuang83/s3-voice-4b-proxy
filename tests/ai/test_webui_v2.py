@@ -106,6 +106,21 @@ class Contracts(unittest.TestCase):
         self.assertIn('aria-live="polite"', self.html)
         self.assertIn('aria-label="开始语音"', self.html)
 
+    def test_v3_no_redundant_chat_heading_or_inner_typing_rectangle(self):
+        # Visual-only cleanup; keep all existing text chat and voice IDs.
+        self.assertNotIn("私人对话", self.html)
+        self.assertNotIn("今天想聊些什么？", self.html)
+        self.assertNotIn('class="chat-title"', self.html)
+        self.assertIn('id="modelSelect"', self.html)
+        self.assertIn('id="newChatBtn"', self.html)
+        self.assertIn('id="messageInput"', self.html)
+        self.assertIn('id="sendBtn"', self.html)
+        self.assertIn("justify-content: flex-end;", self.css)
+        self.assertNotIn("textarea:focus-visible", self.css)
+        self.assertIn(".composer textarea", self.css)
+        self.assertIn("outline: none;", self.css)
+        self.assertIn('el("messageInput").addEventListener("input"', self.js)
+
     def test_ephemeral_history_and_copy_are_ui_only(self):
         self.assertIn("当前会话", self.html)
         self.assertIn("本次文字内容", self.html)
