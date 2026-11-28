@@ -57,6 +57,7 @@ globalThis.AudioWorkletNode = Worklet;
 window.AudioWorkletNode = Worklet;
 
 const sounds = [];
+const contexts = [];
 let resumeCalls = 0;
 let blockNextModule = false;
 let releasePendingModule = null;
@@ -65,6 +66,7 @@ class AudioContextMock {
     assert.equal(options.sampleRate, undefined, "browser native sample rate required");
 
     this.currentTime = 0;
+    contexts.push(this);
     this.destination = {};
     this.audioWorklet = {addModule:async path=>{
       assert.equal(path,"/webui/audio-worklet.js");
@@ -80,7 +82,7 @@ class AudioContextMock {
   }
   createBufferSource() {
     const sound={buffer:null,onended:null,stopped:false,
-      connect(){},start(){},stop(){this.stopped=true; if(this.onended)this.onended();}
+      connect(){},start(when){this.startTime=when;},stop(){this.stopped=true; if(this.onended)this.onended();}
     };
     sounds.push(sound);
     return sound;
@@ -173,6 +175,25 @@ assert.match(status.textContent,/可继续说话.*上一轮TTS首帧.*音频 1 �
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,initialCount+1,"mic must resume on the same session");
 
+// Thirty deterministic voice playback rounds. Actual source onended gates
+// each round; server text stop alone never unmutes the microphone.
+for (let round=0; round<30; round++) {
+  ws.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
+  assert.equal(voiceButton.attributes["aria-label"],"打断播报并继续说话");
+  ws.onmessage({data:new Uint8Array([1,2]).buffer});
+  const node=sounds.at(-1);
+  ws.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
+  assert.equal(port.messages.at(-1).type,"stop", "round "+round);
+  contexts.at(-1).currentTime = node.startTime + node.buffer.duration;
+  node.onended();
+  await new Promise(resolve=>setTimeout(resolve,95));
+  assert.equal(port.messages.at(-1).type,"start","round "+round);
+  assert.equal(voiceButton.attributes["aria-label"],"停止语音");
+  const count=ws.sent.length;
+  port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
+  assert.equal(ws.sent.length,count+1);
+}
+
 await voiceButton.listeners.click();
 assert.match(elements.voiceMetrics.textContent,/语音已停止.*已发送/);
 assert.equal(ws.closed,true);
@@ -185,7 +206,9 @@ const countAfterStop = ws.sent.length;
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
 assert.equal(ws.sent.length,countAfterStop,"no audio after stop");
 
-// Close while a TTS tail timer is pending: never resume an expired session.
+// Manual interruption during an active TTS tail: keep the authorized WS,
+// send native XiaoZhi abort + listen start, and discard late audio/stop.
+
 await voiceButton.listeners.click();
 const ws2=sockets.at(-1), port2=processors.at(-1).port;
 ws2.onopen();
@@ -194,12 +217,36 @@ ws2.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
 ws2.onmessage({data:new Uint8Array([1,2]).buffer});
 ws2.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
 const pendingSound=sounds.at(-1);
+const countBeforeInterrupt=ws2.sent.length;
 await voiceButton.listeners.click();
+assert.equal(ws2.closed,undefined, "interrupt keeps the same voice WebSocket");
 assert.equal(pendingSound.stopped,true,
-  "manual stop must stop browser playback even when TTS tail is pending");
+  "manual interruption stops browser audio immediately");
+assert.equal(ws2.sent.length,countBeforeInterrupt+2);
+assert.deepEqual(JSON.parse(ws2.sent.at(-2)),
+  {type:"abort",session_id:"second",reason:"user_interruption"});
+assert.deepEqual(JSON.parse(ws2.sent.at(-1)),
+  {type:"listen",state:"start",mode:"auto",session_id:"second"});
+assert.equal(port2.messages.at(-1).type,"start",
+  "mic resumes immediately for user speech after barge-in");
+const currentSoundCount=sounds.length;
+ws2.onmessage({data:new Uint8Array([1,2]).buffer});
+assert.equal(sounds.length,currentSoundCount,
+  "late TTS audio discarded until abort acknowledgement");
+const countBeforeAck=port2.messages.length;
+ws2.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
+await new Promise(resolve=>setTimeout(resolve,190));
+assert.equal(port2.messages.length,countBeforeAck,
+  "late stop from aborted response must not create duplicate mic restart");
+const sentAfterInterrupt=ws2.sent.length;
+port2.onmessage({data:{type:"frame",data:new Int16Array(960)}});
+assert.equal(ws2.sent.length,sentAfterInterrupt+1,
+  "WebVoice mic streams on same session after interruption");
+await voiceButton.listeners.click();
+assert.equal(ws2.closed,true,"second click while listening stops the session");
 const countStop=port2.messages.length;
-await new Promise(resolve=>setTimeout(resolve,360));
-assert.equal(port2.messages.length,countStop,"old TTS tail must not restart mic");
+await new Promise(resolve=>setTimeout(resolve,170));
+assert.equal(port2.messages.length,countStop,"stopped session must not restart mic");
 
 // Logging out while Safari is loading an AudioWorklet must not open a
 // new WebSocket after session cancellation (no orphan mic/session).
@@ -217,4 +264,4 @@ assert.equal(sockets.length,connectionsBefore,
   "cancellation during AudioWorklet load must not create a WebSocket");
 assert.equal(voiceButton.textContent,"SVG_ICON_PRESERVED");
 
-console.log("WEBUI_P2_AUDIO_UI_PASS: SVG retained, Hello and Opus mic flow, TTS mute/tail resume, stop, timers and async logout");
+console.log("WEBVOICE_P2_2_AUDIO_PASS: 30 full TTS tail rounds, native abort+listen barge-in, stale packets ignored, manual stop/logout, no 4B dependency");
