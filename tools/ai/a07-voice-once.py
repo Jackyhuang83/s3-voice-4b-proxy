@@ -71,7 +71,7 @@ def protected_fingerprint():
 def helper_call(root, action):
     helper = root / "tools/ai/a07-audio-pacing.py"
     proc = subprocess.run([sys.executable, str(helper), action],
-                          capture_output=True, timeout=230, check=False)
+                          capture_output=True, timeout=600, check=False)
     if proc.returncode:
         # Never emit stderr/stdout from commands running near private API keys.
         raise SafeStop("PACING_HELPER_" + action.upper() + "_BLOCKED")
