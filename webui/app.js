@@ -8,6 +8,19 @@
   let noticeTimer;
   let currentAbort = null;
   const originAPI = "/webui/api/";
+  const sidebarDialog = el("sidebarDialog");
+  const sidebarToggle = el("sidebarToggle");
+
+  function setSidebarExpanded() {
+    sidebarToggle.setAttribute("aria-expanded", String(sidebarDialog.open));
+  }
+
+  function toggleSidebar() {
+    if (sidebarDialog.open) sidebarDialog.close();
+    else sidebarDialog.showModal();
+    setSidebarExpanded();
+  }
+
 
   function notify(message) {
     el("appNotice").textContent = message;
@@ -200,6 +213,26 @@
       el("messageInput").focus();
     }
   }
+
+
+  sidebarToggle.addEventListener("click", toggleSidebar);
+  el("sidebarClose").addEventListener("click", () => sidebarDialog.close());
+  sidebarDialog.addEventListener("close", setSidebarExpanded);
+  sidebarDialog.addEventListener("click", (event) => {
+    if (event.target !== sidebarDialog) return;
+    const rect = sidebarDialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX >= rect.right ||
+        event.clientY < rect.top || event.clientY >= rect.bottom) {
+      sidebarDialog.close();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key?.toLowerCase() !== "k" || event.ctrlKey || event.altKey ||
+        event.metaKey || event.shiftKey || event.isComposing || event.repeat) return;
+    if (event.target?.closest?.('input, textarea, select, [contenteditable], [role="textbox"]')) return;
+    event.preventDefault();
+    toggleSidebar();
+  });
 
   el("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
