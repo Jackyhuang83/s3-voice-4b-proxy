@@ -15,9 +15,12 @@ p = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p)
 
 
-def exercise(mode, failure=None, already=False):
+def exercise(mode, failure=None, already=False, intermediate=False, customized=False):
     old = b"/* current UI v3 */\n"
-    new = b"/* reviewed voice onended */\n"
+    partial = b"/* P2-1 reviewed voice onended */\n"
+    new = b"/* final WebVoice onended + abort */\n"
+    if intermediate: old=partial
+    if customized: old=b"/* local production customization */\n"
     with tempfile.TemporaryDirectory(prefix="webui-voice-publish-ci-") as folder:
         root = Path(folder)
         src = root / "src"
@@ -44,7 +47,8 @@ def exercise(mode, failure=None, already=False):
         patches.enter_context(patch.object(p,"guarded_hashes",return_value={"all":"stable"}))
         patches.enter_context(patch.object(p,"verify_routes",side_effect=routed))
         patches.enter_context(patch.object(p,"pinned_voice",return_value=new))
-        patches.enter_context(patch.object(p,"BEFORE_BLOB",p.blob(old)))
+        patches.enter_context(patch.object(p,"BEFORE_BLOB",p.blob(b"/* current UI v3 */\n")))
+        patches.enter_context(patch.object(p,"INTERMEDIATE_BLOB",p.blob(partial)))
         patches.enter_context(patch.object(p,"AFTER_BLOB",p.blob(new)))
         output = io.StringIO()
         with patches,contextlib.redirect_stdout(output):
@@ -67,7 +71,7 @@ def exercise(mode, failure=None, already=False):
 
 
 final, backups, _, err, out=exercise("apply")
-assert final == b"/* reviewed voice onended */\n" and err is None
+assert final == b"/* final WebVoice onended + abort */\n" and err is None
 assert "WEBUI_VOICE_AUDIO_ONLY_ACTIVE_PASS" in out
 assert "WEBUI_VOICE_ALREADY_ACTIVE_PASS" in out
 assert "WEBUI_VOICE_MANUAL_ROLLBACK_PASS" in out
@@ -75,9 +79,16 @@ final, backups, _, err, out=exercise("apply",failure="routes")
 assert final == b"/* current UI v3 */\n" and backups==[final]
 assert err=="MOCK_ROUTE_FAIL" and "WEBUI_VOICE_FAILED_APPLY_ROLLBACK_PASS" in out
 final, backups, _, err, out=exercise("apply",already=True)
-assert final == b"/* reviewed voice onended */\n" and err is None and not backups
+assert final == b"/* final WebVoice onended + abort */\n" and err is None and not backups
 assert "WEBUI_VOICE_ALREADY_ACTIVE_PASS" in out
 final, backups, _, err, out=exercise("rollback")
 assert err=="NO_VOICE_BACKUP" and not backups
+final, backups, _, err, out=exercise("apply",intermediate=True)
+assert err is None and final == b"/* final WebVoice onended + abort */\n"
+assert backups == [b"/* P2-1 reviewed voice onended */\n"]
+final, backups, _, err, out=exercise("apply",customized=True)
+assert err=="LIVE_VOICE_CUSTOMIZED_NO_OVERWRITE"
+assert final==b"/* local production customization */\n"
+assert not backups
 assert p.blob(b"hello")=="b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0"
-print("WEBUI_VOICE_PUBLISH_TEST_PASS: immutable blob, audio-only apply/idempotency, private backup, explicit rollback, failed-verify recovery, no restarts")
+print("WEBVOICE_RELEASE_TEST_PASS: stable UI v3/P2-1 to final P2-2, custom fail-closed, verified backup, rollback/idempotency, no container restart")
