@@ -117,3 +117,17 @@ Use **functional English names**, NOT A03/A04/A05/A06/A07/A09, in all new user-f
 **Architecture (browser only):** `WebUI → WebGateway → WebAuth → VoiceCore → SpeechEngine ↔ ModelAPI`. Browser requests use a distinct WebGateway and authenticated session. DeviceGateway is not on the browser ingress path. Do not confuse the shared VoiceCore container name with the 4B hardware project's scope.
 
 **Original P0–P5 roadmap unchanged** (10%,20%,25%,20%,15%,10%; PR numbers and dependencies inherited). Current planned P2 deliverables are existing Draft PR #39 = 14 weight points for mic/Opus/browser playback and P2-2 = 11 for resilience/interruption. Acceptance remains distinct for source, CI, real VPS and real Safari; no credit for unverified live speech. Any code report should use the functional names above, with the legacy identifier only in one-time migration tables.
+
+
+## WebVoice P2-2 precise development plan (2026-11-28, before implementation)
+
+This is **the second and last planned P2 PR**, worth 11 points out of the total 100; it is **stacked on P2-1 PR #39** to avoid losing unmerged, verified audio code. The global P0–P5 PR count, dependencies and weights above remain unchanged. No firmware/hardware/DeviceGateway work.
+
+**P2-2 deliverables:**
+1. Reuse the **official XiaoZhi v0.9.8 `abort` text message** with current `session_id`, and the existing browser-side mic button. When AI speaks, clicking the same mic button interrupts only the spoken reply and resumes listening on the same authenticated WS; when already listening, clicking it still closes the voice session. Update accessibility label to reflect the action.
+2. Stop queued local `AudioBufferSourceNode` instances upon explicit interruption, discard stale inbound binary frames until the next `tts.start`, ignore the interrupted turn's late `tts.stop`, avoid timer-driven microphone duplication and retain original audio-onended tail behavior on normal completion.
+3. Extend headless WebAudio + mock WS assertions for the original complete turn, abnormal late packets, two-way interruption, repeated clicks and explicit stop. No 4B/DeviceGateway/A03 or generic API changes.
+
+**Dependencies:** P2-1 #39 must pass all relevant CI and browser-voice publisher gates; this branch is source-only until then. Stable UI v3 is on `release/s3-voice-ui-v3-20261128` rather than `main`; do **not** publish/overwrite the full stacked development branch. P2-2's production publisher must be a separate reviewed, pinned WebVoice-only delta with backup and real Safari acceptance.
+
+**Acceptance (separate levels):** GitHub source review and Node mock lifecycle PASS; upstream `abort` protocol confirmed at tag v0.9.8; zero new API calls/permissions/backend changes; 30 deterministic synthetic turn/interrupt cases in CI; then real VPS WebVoice-only no-container-restart rollout and real iPhone Safari continuous speech tests. A single mocked roundtrip or CI PASS alone is not production acceptance.
