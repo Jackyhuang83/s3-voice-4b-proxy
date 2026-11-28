@@ -55,13 +55,40 @@
     bubble.textContent = value;
     wrapper.append(label, bubble);
     el("messages").appendChild(wrapper);
-    scrollToBottom();
+    scrollToBottom(true);
     return bubble;
   }
 
-  function scrollToBottom() {
+  function scrollToBottom(force = false) {
     const view = el("messages");
-    view.scrollTop = view.scrollHeight;
+    const distance = view.scrollHeight - view.scrollTop - view.clientHeight;
+    // Respect readers scrolling through an earlier answer.
+    if (force || distance <= 130) view.scrollTop = view.scrollHeight;
+  }
+
+  function addReplyCopy(bubble) {
+    const parent = bubble.parentElement;
+    if (!parent) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-reply";
+    button.textContent = "复制回复";
+    button.setAttribute("aria-label", "复制 AI 回复");
+    button.addEventListener("click", async () => {
+      if (!navigator.clipboard?.writeText) {
+        notify("当前浏览器无法直接复制，请长按选择文字。");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(bubble.textContent);
+        button.textContent = "已复制";
+        notify("已复制回复");
+        setTimeout(() => { if (button.isConnected) button.textContent = "复制回复"; }, 1800);
+      } catch {
+        notify("复制失败，请长按选择文字。");
+      }
+    });
+    parent.appendChild(button);
   }
 
   function resetChat() {
@@ -154,6 +181,7 @@
         throw new Error("HTTP " + response.status);
       }
       const answer = await readStream(response, assistant);
+      addReplyCopy(assistant);
       history.push(turn, {role:"assistant", content:answer});
       if (history.length > 20) history.splice(0, history.length - 20);
     } catch (err) {
@@ -213,6 +241,9 @@
   });
   el("messageInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      // On touch devices, keep the virtual keyboard's Enter as newline.
+      // The visible Send button submits without changing server behavior.
+      if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
       event.preventDefault();
       el("chatForm").requestSubmit();
     }
