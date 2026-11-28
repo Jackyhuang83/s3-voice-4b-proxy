@@ -3,68 +3,88 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0e1724">
+  <meta name="theme-color" content="#10151f">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'">
-  <title>S3-Voice AI助手</title>
+  <title>S3-Voice AI 助手</title>
   <link rel="stylesheet" href="/webui/app.css">
   <script defer src="/webui/app.js"></script>
   <script type="module" src="/webui/audio-ui.mjs"></script>
 </head>
 <body>
   <main class="layout">
-    <header class="topbar">
-      <div class="brand"><span class="spark">✦</span><span>S3-Voice AI助手</span></div>
-      <div class="header-side">
-        <span class="status" id="connectionStatus">未连接</span>
-        <button class="ghost" id="logoutBtn" hidden type="button">退出</button>
+    <aside class="sidebar" aria-label="工作区导航">
+      <div class="sidebar-brand"><span class="spark" aria-hidden="true">✦</span><span><strong>S3-Voice</strong><small>个人 AI 工作区</small></span></div>
+      <div class="sidebar-group">
+        <p class="sidebar-heading">工作区</p>
+        <div class="sidebar-current" aria-current="page"><span aria-hidden="true">◉</span><span>当前会话</span></div>
+        <p class="sidebar-description">对话保留在当前页面中。新对话将清空本次文字内容。</p>
       </div>
-    </header>
+      <div class="sidebar-footer"><span class="sidebar-dot" aria-hidden="true"></span>私有部署 · 仅限本人访问</div>
+    </aside>
 
-    <section class="login" id="loginView" hidden aria-label="登录">
-      <div class="login-card">
-        <div class="logo-mark">✦</div>
-        <h1>你的私人 AI 助手</h1>
-        <p>通过自建服务器与 GPT / DeepSeek 交流。无需安装 iOS App。</p>
-        <form id="loginForm">
-          <label for="ownerPassword">访问密码</label>
-          <input id="ownerPassword" type="password" autocomplete="current-password" required minlength="1" placeholder="输入服务器访问密码">
-          <button type="submit" class="primary" id="loginBtn">安全登录</button>
-        </form>
-        <p id="loginError" class="error" role="alert"></p>
-      </div>
-    </section>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="brand"><span class="spark" aria-hidden="true">✦</span><span>S3-Voice <span class="brand-suffix">AI 助手</span></span></div>
+        <div class="header-side">
+          <span class="status" id="connectionStatus" role="status">未连接</span>
+          <button class="ghost" id="logoutBtn" hidden type="button">退出</button>
+        </div>
+      </header>
 
-    <section class="chat" id="chatView" hidden aria-label="文字聊天">
-      <div class="chat-head">
-        <div>
-          <p class="eyebrow">私人空间</p>
-          <h1>今天想聊些什么？</h1>
+      <section class="login" id="loginView" hidden aria-label="登录">
+        <div class="login-card">
+          <div class="logo-mark" aria-hidden="true">✦</div>
+          <p class="login-caption">欢迎回到你的个人空间</p>
+          <h1>连接你的私人 AI</h1>
+          <p>使用现有自建服务器与 GPT / DeepSeek 交流，文字和语音功能保持不变。</p>
+          <form id="loginForm">
+            <label for="ownerPassword">访问密码</label>
+            <input id="ownerPassword" type="password" autocomplete="current-password" required minlength="1" placeholder="输入服务器访问密码">
+            <button type="submit" class="primary" id="loginBtn">安全登录</button>
+          </form>
+          <p id="loginError" class="error" role="alert"></p>
         </div>
-        <div class="controls">
-          <label class="visually-hidden" for="modelSelect">模型</label>
-          <select id="modelSelect" aria-label="选择 AI 模型"></select>
-          <button class="ghost" id="newChatBtn" type="button">新对话</button>
+      </section>
+
+      <section class="chat" id="chatView" hidden aria-label="AI 聊天">
+        <div class="chat-head">
+          <div class="chat-title">
+            <p class="eyebrow">私人对话</p>
+            <h1>今天想聊些什么？</h1>
+          </div>
+          <div class="controls">
+            <label class="visually-hidden" for="modelSelect">选择 AI 模型</label>
+            <select id="modelSelect" aria-label="选择 AI 模型"></select>
+            <button class="ghost" id="newChatBtn" type="button">＋ 新对话</button>
+          </div>
         </div>
-      </div>
-      <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions text">
-        <div id="welcome" class="welcome">
-          <span class="welcome-icon">✦</span>
-          <h2>你好，有什么可以帮你？</h2>
-          <p>可以打字提问，也可以点击麦克风开始语音。</p>
+
+        <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions text">
+          <div id="welcome" class="welcome">
+            <span class="welcome-icon" aria-hidden="true">✦</span>
+            <h2>你好，有什么可以帮你？</h2>
+            <p>选择模型后开始提问，也可以通过麦克风与 AI 自然对话。</p>
+            <span class="welcome-hint">文字聊天 · 语音交流 · 自建模型</span>
+          </div>
         </div>
-      </div>
-      <form id="chatForm" class="composer">
-        <label class="visually-hidden" for="messageInput">输入聊天消息</label>
-        <textarea id="messageInput" rows="1" maxlength="2000" placeholder="向 AI 提问…" aria-label="输入聊天消息"></textarea>
-        <div class="composer-actions">
-          <span class="hint">Enter 发送 · Shift+Enter 换行</span>
-          <button id="voiceButton" type="button" class="ghost" aria-label="开始语音" title="开始语音" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" class="s3-mic-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>
-          <button id="sendBtn" type="submit" class="primary send" aria-label="发送消息">发送</button>
+
+        <div class="composer-wrap">
+          <form id="chatForm" class="composer">
+            <label class="visually-hidden" for="messageInput">输入聊天消息</label>
+            <textarea id="messageInput" rows="1" maxlength="2000" placeholder="发送消息给 AI…" aria-label="输入聊天消息"></textarea>
+            <div class="composer-actions">
+              <span class="hint">Enter 发送 · Shift+Enter 换行</span>
+              <div class="composer-buttons">
+                <button id="voiceButton" type="button" class="ghost" aria-label="开始语音" title="开始语音" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" class="s3-mic-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>
+                <button id="sendBtn" type="submit" class="primary send" aria-label="发送消息">发送</button>
+              </div>
+            </div>
+          </form>
+          <p class="voice-status" id="voiceStatus" role="status" aria-live="polite">点击麦克风开始语音</p>
         </div>
-      </form>
-      <p class="voice-status" id="voiceStatus" role="status" aria-live="polite">点击麦克风开始语音</p>
-    </section>
+      </section>
+    </div>
     <div id="appNotice" class="notice" role="status" aria-live="polite"></div>
   </main>
 </body>
