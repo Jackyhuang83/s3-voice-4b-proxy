@@ -158,8 +158,16 @@ assert.match(status.textContent,/AI 语音已到达，正在播放/,
   "first Opus packet transitions from preparing to playback");
 assert.equal(ws.sent.length,initialCount, "TTS audio must not enable microphone");
 ws.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
-await new Promise(resolve=>setTimeout(resolve,360));
-assert.equal(port.messages.at(-1).type,"start","mic resumes after TTS playback tail");
+// The WebSocket 'stop' is upstream completion, not speaker output completion.
+// Microphone must remain muted until the real AudioBufferSourceNode ended.
+await new Promise(resolve=>setTimeout(resolve,190));
+assert.equal(port.messages.at(-1).type,"stop",
+  "must not resume while any browser audio source still playing");
+assert.equal(sounds[0].stopped,false);
+sounds[0].onended();
+await new Promise(resolve=>setTimeout(resolve,130));
+assert.equal(port.messages.at(-1).type,"start",
+  "mic resumes only after onended and 80ms gap");
 assert.match(status.textContent,/可继续说话.*上一轮TTS首帧.*音频 1 帧/,
   "TTS first audio and packet count must remain visible after playback");
 port.onmessage({data:{type:"frame",data:new Int16Array(960)}});
@@ -168,7 +176,8 @@ assert.equal(ws.sent.length,initialCount+1,"mic must resume on the same session"
 await voiceButton.listeners.click();
 assert.match(elements.voiceMetrics.textContent,/语音已停止.*已发送/);
 assert.equal(ws.closed,true);
-assert.equal(sounds[0].stopped,true,"manual stop must cancel queued speech");
+assert.equal(sounds[0].stopped,false,
+  "already finished audio must not be stopped again after onended");
 assert.equal(voiceButton.attributes["aria-pressed"],"false");
 assert.equal(voiceButton.textContent,"SVG_ICON_PRESERVED");
 assert.ok(stoppedTracks>0);
@@ -182,8 +191,12 @@ const ws2=sockets.at(-1), port2=processors.at(-1).port;
 ws2.onopen();
 ws2.onmessage({data:JSON.stringify({type:"hello",session_id:"second"})});
 ws2.onmessage({data:JSON.stringify({type:"tts",state:"start"})});
+ws2.onmessage({data:new Uint8Array([1,2]).buffer});
 ws2.onmessage({data:JSON.stringify({type:"tts",state:"stop"})});
+const pendingSound=sounds.at(-1);
 await voiceButton.listeners.click();
+assert.equal(pendingSound.stopped,true,
+  "manual stop must stop browser playback even when TTS tail is pending");
 const countStop=port2.messages.length;
 await new Promise(resolve=>setTimeout(resolve,360));
 assert.equal(port2.messages.length,countStop,"old TTS tail must not restart mic");
