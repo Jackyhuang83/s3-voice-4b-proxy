@@ -94,15 +94,16 @@ try {
       return {
         scrollWidth:document.documentElement.scrollWidth,
         clientWidth:document.documentElement.clientWidth,
-        sidebarVisible:getComputedStyle(document.querySelector(".sidebar")).display!=="none",
+        sidebarOpen:document.querySelector("#sidebarDialog").open,
+        openerVisible:getComputedStyle(document.querySelector("#sidebarToggle")).display!=="none",
         options:document.querySelector("#modelSelect").options.length,
         bounds
       };
     });
     assert.ok(state.scrollWidth<=width+1,
       `horizontal overflow at ${width}: ${state.scrollWidth}`);
-    assert.equal(state.sidebarVisible,width>=981,
-      `sidebar visibility at ${width}`);
+    assert.equal(state.sidebarOpen,false,`drawer must start collapsed at ${width}`);
+    assert.equal(state.openerVisible,true,`opener must be visible at ${width}`);
     assert.equal(state.options,2);
     for (const [id,b] of Object.entries(state.bounds)) {
       assert.ok(b.w>0&&b.h>0,`invisible ${id} at ${width}`);
@@ -111,6 +112,23 @@ try {
     assert.ok(state.bounds.voiceButton.w>=42 &&
       state.bounds.voiceButton.h>=42,`voice touch target too small at ${width}`);
     await page.screenshot({path:`test-results/webui-v2-${width}.png`,fullPage:true});
+    await page.locator("#sidebarToggle").click();
+    assert.equal(await page.locator("#sidebarDialog").evaluate(e=>e.open),true);
+    assert.equal(await page.locator("#sidebarToggle").getAttribute("aria-expanded"),"true");
+    await page.locator("#sidebarClose").waitFor({state:"visible"});
+    await page.screenshot({path:`test-results/webui-v3-${width}-drawer.png`,fullPage:true});
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#sidebarDialog").evaluate(e=>e.open),false);
+    await page.keyboard.press("k");
+    assert.equal(await page.locator("#sidebarDialog").evaluate(e=>e.open),true);
+    await page.mouse.click(width-3, Math.round(height/2));
+    assert.equal(await page.locator("#sidebarDialog").evaluate(e=>e.open),false,
+      "backdrop click must close the drawer");
+    await page.locator("#messageInput").fill("k");
+    await page.keyboard.press("k");
+    assert.equal(await page.locator("#sidebarDialog").evaluate(e=>e.open),false,
+      "typing in message box must not activate shortcut");
+    await page.locator("#messageInput").fill("");
     await page.locator("#messageInput").fill("你好");
     await page.locator("#sendBtn").click();
     try {
@@ -146,7 +164,7 @@ try {
     assert.equal(await page.locator(".message.assistant").count(),1,
       "second question must render a fresh assistant turn after welcome removal");
     assert.deepEqual(errors,[],`page errors at ${width}`);
-    snapshots.push(`${width}px: no overflow, ${state.sidebarVisible?"desktop nav":"mobile nav"}, SSE/copy/reset PASS`);
+    snapshots.push(`${width}px: no overflow, collapsed accessible drawer + K/Escape/backdrop, SSE/copy/reset PASS`);
     await context.close();
   }
   // Light scheme must use visibly different surface colors at desktop.
