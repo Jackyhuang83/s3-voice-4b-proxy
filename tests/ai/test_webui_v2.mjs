@@ -10,6 +10,9 @@ function element(tag = "div", id = "") {
     clientHeight:100, style:{}, parentElement:null, isConnected:true,
     classList:{add(){},remove(){}},
     addEventListener(type, cb) { this.listeners[type] = cb; },
+    showModal() { this.open = true; },
+    close() { this.open = false; this.listeners.close?.(); },
+    getBoundingClientRect() { return {left:0,right:304,top:0,bottom:800}; },
     setAttribute(name, value) { (this.attributes ??= {})[name] = value; },
     append(...children) { for (const child of children) this.appendChild(child); },
     appendChild(child) {
@@ -45,7 +48,8 @@ const ids = [
   "connectionStatus","logoutBtn","loginView","loginForm",
   "ownerPassword","loginBtn","loginError","chatView",
   "modelSelect","newChatBtn","messages","welcome","chatForm",
-  "messageInput","voiceButton","sendBtn","voiceStatus","appNotice"
+  "messageInput","voiceButton","sendBtn","voiceStatus","appNotice",
+  "sidebarDialog","sidebarToggle","sidebarClose"
 ];
 const elements = Object.fromEntries(ids.map(id => [id, element("div", id)]));
 elements.modelSelect.tag = "select";
@@ -91,8 +95,10 @@ async function fakeFetch(path, options = {}) {
 const windowMock = {
   matchMedia:() => ({matches:coarse})
 };
+const documentListeners = {};
 const context = {
   document: {
+    addEventListener(type, cb) { documentListeners[type] = cb; },
     getElementById(id) {
       assert.ok(elements[id], "known DOM ID " + id);
       return elements[id];
@@ -123,6 +129,28 @@ assert.equal(elements.modelSelect.options.length,1);
 assert.equal(elements.modelSelect.value,"GPT");
 assert.equal(elements.connectionStatus.textContent,"已安全连接");
 assert.equal(elements.sendBtn.disabled,false);
+
+// Native dialog: button, close, K shortcut and editable-field guard.
+assert.equal(elements.sidebarDialog.open,undefined);
+elements.sidebarToggle.listeners.click();
+assert.equal(elements.sidebarDialog.open,true);
+assert.equal(elements.sidebarToggle.attributes["aria-expanded"],"true");
+elements.sidebarClose.listeners.click();
+assert.equal(elements.sidebarDialog.open,false);
+assert.equal(elements.sidebarToggle.attributes["aria-expanded"],"false");
+let keyPrevented = 0;
+const drawerKey = documentListeners.keydown;
+drawerKey({key:"k",ctrlKey:false,altKey:false,metaKey:false,
+  shiftKey:false,isComposing:false,repeat:false,
+  target:{closest:()=>null},preventDefault(){keyPrevented++;}});
+assert.equal(elements.sidebarDialog.open,true);
+assert.equal(keyPrevented,1);
+drawerKey({key:"k",ctrlKey:false,altKey:false,metaKey:false,
+  shiftKey:false,isComposing:false,repeat:false,
+  target:{closest:()=>true},preventDefault(){keyPrevented++;}});
+assert.equal(elements.sidebarDialog.open,true,"typing K must not close drawer");
+assert.equal(keyPrevented,1);
+elements.sidebarDialog.close();
 
 // Desktop Enter submits; mobile keyboard Enter creates a newline.
 const key = elements.messageInput.listeners.keydown;
