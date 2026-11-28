@@ -161,7 +161,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.ws_auth()
         elif self.path == "/webui/api/models":
             webui_text.visible_models(self)
-        elif self.path in webui_text.FILES or self.path == "/webui":
+        elif webui_text.static_target(self.path) is not None:
             webui_text.serve_static(self)
         else:
             self.deny(404)
