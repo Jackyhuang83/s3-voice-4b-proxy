@@ -63,8 +63,7 @@
 
     # Cloudflare Access may return visitors to the hostname root after OTP.
     # Redirect only the exact public landing path; never proxy it to Auth.
-    @webui_root path /
-    handle @webui_root {
+    handle / {
         redir /webui/ 302
     }
 
